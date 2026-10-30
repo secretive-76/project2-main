@@ -1,0 +1,750 @@
+import type {
+  Achievement,
+  ActivityItem,
+  AIConversation,
+  Course,
+  CourseCertificate,
+  DashboardStats,
+  Instructor,
+  LearningPath,
+  Skill,
+  User,
+} from '@/types';
+
+export const currentUser: User = {
+  id: 'u_1',
+  name: 'Alex Rivera',
+  email: 'alex.rivera@example.com',
+  avatarUrl:
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=128&h=128&fit=crop&crop=faces&q=80',
+  plan: 'pro',
+  joinedAt: '2024-09-12',
+  role: 'student',
+};
+
+export const instructors: Record<string, Instructor> = {
+  maya: {
+    id: 'i_1',
+    name: 'Dr. Maya Chen',
+    title: 'AI Research Lead, ex-DeepMind',
+    avatarUrl:
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=128&h=128&fit=crop&crop=faces&q=80',
+    rating: 4.9,
+    students: 184320,
+  },
+  diego: {
+    id: 'i_2',
+    name: 'Diego Martinez',
+    title: 'Staff Engineer at Vercel',
+    avatarUrl:
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=128&h=128&fit=crop&crop=faces&q=80',
+    rating: 4.8,
+    students: 92110,
+  },
+  sara: {
+    id: 'i_3',
+    name: 'Sara Okafor',
+    title: 'Principal Data Scientist',
+    avatarUrl:
+      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=128&h=128&fit=crop&crop=faces&q=80',
+    rating: 4.9,
+    students: 124500,
+  },
+};
+
+export const stats: DashboardStats = {
+  coursesCompleted: 12,
+  hoursLearned: 147,
+  currentStreak: 23,
+  skillPoints: 8420,
+  weeklyGoalMinutes: 300,
+  weeklyAchievedMinutes: 215,
+};
+
+export const courses: Course[] = [
+  {
+    id: 'c_1',
+    slug: 'transformers-from-scratch',
+    title: 'Transformers from Scratch',
+    subtitle: 'Build a GPT-class model line by line in PyTorch',
+    description:
+      'Go from attention intuition to a working transformer you can train. Every layer explained, every tensor shaped.',
+    category: 'AI & ML',
+    difficulty: 'Advanced',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&h=500&fit=crop&q=80',
+    rating: 4.9,
+    reviews: 3210,
+    enrolled: 45200,
+    durationHours: 18,
+    instructor: instructors.maya,
+    tags: ['PyTorch', 'NLP', 'Deep Learning'],
+    status: 'in-progress',
+    progress: 64,
+    modules: [
+      {
+        id: 'm_1',
+        title: 'Foundations of Attention',
+        lessons: [
+          {
+            id: 'l_1',
+            title: 'Why attention beats recurrence',
+            durationMinutes: 12,
+            type: 'video',
+            completed: true,
+            description: 'Understand the core motivation behind attention and why it replaced recurrence in modern architectures.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            resources: [
+              { label: 'Attention Is All You Need (paper)', url: 'https://arxiv.org/abs/1706.03762' },
+            ],
+          },
+          {
+            id: 'l_2',
+            title: 'Scaled dot-product attention',
+            durationMinutes: 18,
+            type: 'video',
+            completed: true,
+            description: 'The math behind the attention function, from QKV to softmax-weighted sums.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+          },
+          {
+            id: 'l_3',
+            title: 'Self-attention reading guide',
+            durationMinutes: 10,
+            type: 'reading',
+            completed: true,
+            description: 'A written deep-dive on self-attention with diagrams and worked examples.',
+            readingContent:
+              '## Self-Attention Explained\n\nSelf-attention allows a model to weigh the importance of every token in a sequence when producing a representation for any single token.\n\n### The Core Formula\n\nAttention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V\n\n**Query (Q):** What am I looking for?\n**Key (K):** What do I contain?\n**Value (V):** What information do I pass along?\n\n### Why scale by sqrt(d_k)?\n\nAs dimensionality grows, the dot products can become very large, pushing softmax into regions with extremely small gradients. Dividing by sqrt(d_k) keeps the variance stable.\n\n### Multi-head attention\n\nInstead of one attention pass, we run h parallel attention heads, each projecting Q, K, V into a lower-dimensional subspace, then concatenate and project the results.',
+            resources: [
+              { label: 'The Illustrated Transformer', url: 'https://jalammar.github.io/illustrated-transformer/' },
+            ],
+          },
+          {
+            id: 'l_4',
+            title: 'Self-attention quiz',
+            durationMinutes: 8,
+            type: 'quiz',
+            completed: true,
+            description: 'Test your understanding of attention mechanics.',
+          },
+        ],
+      },
+      {
+        id: 'm_2',
+        title: 'Building the Transformer',
+        lessons: [
+          {
+            id: 'l_5',
+            title: 'Multi-head attention',
+            durationMinutes: 22,
+            type: 'video',
+            completed: true,
+            description: 'How multiple attention heads capture different relationships in parallel.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+          },
+          {
+            id: 'l_6',
+            title: 'Positional encoding assignment',
+            durationMinutes: 35,
+            type: 'assignment',
+            completed: false,
+            description: 'Implement sinusoidal and learned positional encodings in PyTorch and submit your solution.',
+            readingContent:
+              '## Positional Encoding Assignment\n\nIn this assignment you will implement two types of positional encoding and compare their effects on a small transformer.\n\n### Objectives\n1. Implement sinusoidal positional encoding\n2. Implement learned positional embeddings\n3. Compare performance on a sequence copy task\n\nComplete the starter notebook, ensure all tests pass, and submit your solution.',
+            assignmentTitle: 'Positional Encoding Implementation',
+            assignmentDescription: 'Implement sinusoidal and learned positional encodings in PyTorch. Submit your notebook with all tests passing.',
+            resources: [
+              { label: 'Assignment starter notebook', url: '#' },
+              { label: 'PyTorch docs — nn.Transformer', url: 'https://pytorch.org/docs/stable/generated/torch.nn.Transformer.html' },
+            ],
+          },
+          {
+            id: 'l_7',
+            title: 'Layer normalization & residuals',
+            durationMinutes: 15,
+            type: 'video',
+            completed: false,
+            description: 'The residual connections and layer norms that stabilize deep transformers.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+          },
+          {
+            id: 'l_8',
+            title: 'AI coach: debug your forward pass',
+            durationMinutes: 15,
+            type: 'ai-coaching',
+            completed: false,
+            description: 'Get instant AI help diagnosing shape mismatches and gradient issues in your transformer.',
+          },
+        ],
+      },
+      {
+        id: 'm_3',
+        title: 'Training & Fine-tuning',
+        lessons: [
+          {
+            id: 'l_9',
+            title: 'Training loop walkthrough',
+            durationMinutes: 28,
+            type: 'video',
+            completed: false,
+            description: 'A complete training loop from data loading to checkpointing.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+          },
+          {
+            id: 'l_10',
+            title: 'Course summary & next steps',
+            durationMinutes: 10,
+            type: 'reading',
+            completed: false,
+            description: 'Recap what you learned and where to go next in your ML journey.',
+            readingContent:
+              '## Course Summary\n\nYou have built a transformer from scratch — from attention intuition to a working training loop.\n\n### What you can do now\n- Explain attention to a peer\n- Implement multi-head attention in PyTorch\n- Debug common shape and gradient issues\n- Train a small transformer on a real task\n\n### Recommended next courses\n- Production LLM Applications\n- Computer Vision with CNNs\n- Reinforcement Learning Essentials',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'c_2',
+    slug: 'production-llm-apps',
+    title: 'Production LLM Applications',
+    subtitle: 'Ship reliable RAG, evals, and guardrails',
+    description:
+      'The engineering layer most courses skip: vector stores, retrieval tuning, observability, and cost control.',
+    category: 'AI & ML',
+    difficulty: 'Intermediate',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&h=500&fit=crop&q=80',
+    rating: 4.8,
+    reviews: 1840,
+    enrolled: 28100,
+    durationHours: 12,
+    instructor: instructors.diego,
+    tags: ['RAG', 'LangChain', 'Eval'],
+    status: 'in-progress',
+    progress: 28,
+    modules: [
+      {
+        id: 'c2_m1',
+        title: 'Why Most LLM Apps Fail',
+        lessons: [
+          {
+            id: 'c2_l1',
+            title: 'The production gap',
+            durationMinutes: 14,
+            type: 'video',
+            completed: true,
+            description: 'Why demos work but production systems do not.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          },
+          {
+            id: 'c2_l2',
+            title: 'Evaluation-first development',
+            durationMinutes: 20,
+            type: 'video',
+            completed: true,
+            description: 'Build evals before features. The discipline that separates toys from products.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+          },
+        ],
+      },
+      {
+        id: 'c2_m2',
+        title: 'RAG Architecture',
+        lessons: [
+          {
+            id: 'c2_l3',
+            title: 'Vector stores & embeddings',
+            durationMinutes: 25,
+            type: 'video',
+            completed: false,
+            description: 'Choosing the right vector DB and embedding model for your data.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+          },
+          {
+            id: 'c2_l4',
+            title: 'Retrieval tuning assignment',
+            durationMinutes: 18,
+            type: 'assignment',
+            completed: false,
+            description: 'Tune chunk size, overlap, and hybrid search for a sample RAG pipeline.',
+            readingContent: '## Retrieval Tuning Assignment\n\n### Chunk size\nStart with 512 tokens. Measure recall@5 on your eval set. Try 256 and 1024.\n\n### Overlap\nAdd 10-20% overlap between chunks to avoid splitting context.\n\n### Hybrid search\nCombine BM25 keyword search with vector search for better recall on queries with rare terms.\n\nComplete the tuning exercises and submit your optimized config with recall metrics.',
+            assignmentTitle: 'RAG Pipeline Tuning',
+            assignmentDescription: 'Tune chunk size, overlap, and hybrid search parameters. Submit your optimized config with recall metrics.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'c_3',
+    slug: 'statistical-foundations',
+    title: 'Statistical Foundations for ML',
+    subtitle: 'The math that makes models make sense',
+    description: 'Probability, inference, and linear models — visualized and intuitive, not memorized.',
+    category: 'Data Science',
+    difficulty: 'Beginner',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=500&fit=crop&q=80',
+    rating: 4.7,
+    reviews: 5210,
+    enrolled: 67400,
+    durationHours: 14,
+    instructor: instructors.sara,
+    tags: ['Statistics', 'Probability', 'Math'],
+    status: 'completed',
+    progress: 100,
+    modules: [
+      {
+        id: 'c3_m1',
+        title: 'Probability Foundations',
+        lessons: [
+          {
+            id: 'c3_l1',
+            title: 'What is probability?',
+            durationMinutes: 16,
+            type: 'video',
+            completed: true,
+            description: 'From frequentist to Bayesian intuition.',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+          },
+          {
+            id: 'c3_l2',
+            title: 'Distributions cheat sheet',
+            durationMinutes: 12,
+            type: 'reading',
+            completed: true,
+            description: 'A visual guide to the distributions every ML practitioner should know.',
+            readingContent: '## Common Distributions\n\n### Normal\nThe bell curve. Appears everywhere via the Central Limit Theorem.\n\n### Bernoulli & Binomial\nCoin flips. The foundation of binary classification.\n\n### Poisson\nCounts of rare events. Used in queuing and anomaly detection.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'c_4',
+    slug: 'fullstack-react-typescript',
+    title: 'Full-Stack React & TypeScript',
+    subtitle: 'Type-safe apps from database to deployment',
+    description: 'Modern React patterns, server actions, and end-to-end typing for real production apps.',
+    category: 'Web Development',
+    difficulty: 'Intermediate',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1633356122544-f073ef97b911?w=800&h=500&fit=crop&q=80',
+    rating: 4.8,
+    reviews: 4120,
+    enrolled: 52300,
+    durationHours: 22,
+    instructor: instructors.diego,
+    tags: ['React', 'TypeScript', 'Vite'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_5',
+    slug: 'python-data-engineering',
+    title: 'Python for Data Engineering',
+    subtitle: 'Pipelines, orchestration, and data at scale',
+    description: 'Build robust ETL pipelines with Airflow, dbt, and modern data stacks.',
+    category: 'Data Science',
+    difficulty: 'Intermediate',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1526379095098-4006756a3777?w=800&h=500&fit=crop&q=80',
+    rating: 4.6,
+    reviews: 2340,
+    enrolled: 31800,
+    durationHours: 16,
+    instructor: instructors.sara,
+    tags: ['Python', 'Airflow', 'ETL'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_6',
+    slug: 'computer-vision-cnn',
+    title: 'Computer Vision with CNNs',
+    subtitle: 'From pixels to perception with convolutional networks',
+    description: 'Build image classifiers, object detectors, and segmentation models from scratch.',
+    category: 'AI & ML',
+    difficulty: 'Advanced',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1563089145-599497fcc34f?w=800&h=500&fit=crop&q=80',
+    rating: 4.8,
+    reviews: 1890,
+    enrolled: 22400,
+    durationHours: 20,
+    instructor: instructors.maya,
+    tags: ['CNN', 'PyTorch', 'Vision'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_7',
+    slug: 'reinforcement-learning',
+    title: 'Reinforcement Learning Essentials',
+    subtitle: 'Agents, environments, and rewards from first principles',
+    description: 'Master Q-learning, policy gradients, and modern RLHF used in LLM training.',
+    category: 'AI & ML',
+    difficulty: 'Advanced',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1535378918544-7d3697d9b3e8?w=800&h=500&fit=crop&q=80',
+    rating: 4.7,
+    reviews: 1120,
+    enrolled: 15600,
+    durationHours: 15,
+    instructor: instructors.maya,
+    tags: ['RL', 'RLHF', 'PyTorch'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_8',
+    slug: 'sql-data-analysis',
+    title: 'SQL & Data Analysis',
+    subtitle: 'Query like a pro and tell stories with data',
+    description: 'From SELECT to window functions — the SQL skills every analyst and engineer needs.',
+    category: 'Data Science',
+    difficulty: 'Beginner',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=800&h=500&fit=crop&q=80',
+    rating: 4.7,
+    reviews: 6890,
+    enrolled: 89200,
+    durationHours: 10,
+    instructor: instructors.sara,
+    tags: ['SQL', 'PostgreSQL', 'Analytics'],
+    status: 'completed',
+    progress: 100,
+    modules: [],
+  },
+  {
+    id: 'c_9',
+    slug: 'nextjs-production',
+    title: 'Next.js in Production',
+    subtitle: 'Server components, streaming, and deployment at scale',
+    description: 'Build fast, type-safe full-stack apps with the App Router and server actions.',
+    category: 'Web Development',
+    difficulty: 'Intermediate',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1517180102446-f3ece251e9f4?w=800&h=500&fit=crop&q=80',
+    rating: 4.8,
+    reviews: 2780,
+    enrolled: 41100,
+    durationHours: 14,
+    instructor: instructors.diego,
+    tags: ['Next.js', 'React', 'Vercel'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_10',
+    slug: 'prompt-engineering',
+    title: 'Prompt Engineering Mastery',
+    subtitle: 'Get the most out of any LLM',
+    description: 'Chain-of-thought, few-shot, function calling, and structured output techniques that work.',
+    category: 'AI & ML',
+    difficulty: 'Beginner',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1684393165778-ea7b8e9c6c5e?w=800&h=500&fit=crop&q=80',
+    rating: 4.6,
+    reviews: 4120,
+    enrolled: 73500,
+    durationHours: 6,
+    instructor: instructors.diego,
+    tags: ['LLM', 'Prompting', 'GPT'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+  {
+    id: 'c_11',
+    slug: 'linear-algebra-ml',
+    title: 'Linear Algebra for Machine Learning',
+    subtitle: 'Vectors, matrices, and the geometry of ML',
+    description: 'Visual, intuitive linear algebra — the foundation under every model you will build.',
+    category: 'Data Science',
+    difficulty: 'Beginner',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&h=500&fit=crop&q=80',
+    rating: 4.8,
+    reviews: 3450,
+    enrolled: 51200,
+    durationHours: 11,
+    instructor: instructors.sara,
+    tags: ['Math', 'Linear Algebra', 'ML'],
+    status: 'completed',
+    progress: 100,
+    modules: [],
+  },
+  {
+    id: 'c_12',
+    slug: 'mlops-deployments',
+    title: 'MLOps: Model Deployment & Monitoring',
+    subtitle: 'Ship models that do not break at 3am',
+    description: 'Docker, Kubernetes, model registries, drift detection, and the production ML lifecycle.',
+    category: 'AI & ML',
+    difficulty: 'Advanced',
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1451187580459-9546291f6b25?w=800&h=500&fit=crop&q=80',
+    rating: 4.7,
+    reviews: 980,
+    enrolled: 12900,
+    durationHours: 17,
+    instructor: instructors.maya,
+    tags: ['MLOps', 'Docker', 'Kubernetes'],
+    status: 'not-started',
+    progress: 0,
+    modules: [],
+  },
+];
+
+export const learningPaths: LearningPath[] = [
+  {
+    id: 'lp_1',
+    slug: 'ml-engineer-track',
+    title: 'ML Engineer Track',
+    description: 'From probability to production models — a complete path curated by Akademia AI.',
+    courseCount: 6,
+    estimatedWeeks: 16,
+    status: 'active',
+    progress: 45,
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1555949963-ff9fe0c895e4?w=400&h=250&fit=crop&q=80',
+    aiGenerated: true,
+  },
+  {
+    id: 'lp_2',
+    slug: 'ai-product-builder',
+    title: 'AI Product Builder',
+    description: 'Design, build, and ship AI-powered features users actually want.',
+    courseCount: 4,
+    estimatedWeeks: 10,
+    status: 'active',
+    progress: 20,
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1488229297579-377139a70d0b?w=400&h=250&fit=crop&q=80',
+    aiGenerated: true,
+  },
+  {
+    id: 'lp_3',
+    slug: 'data-analyst',
+    title: 'Data Analyst Foundations',
+    description: 'SQL, statistics, and storytelling with data.',
+    courseCount: 5,
+    estimatedWeeks: 12,
+    status: 'completed',
+    progress: 100,
+    thumbnailUrl:
+      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=250&fit=crop&q=80',
+    aiGenerated: false,
+  },
+];
+
+export const skills: Skill[] = [
+  { id: 's_1', name: 'PyTorch', proficiency: 78, category: 'Frameworks' },
+  { id: 's_2', name: 'Python', proficiency: 92, category: 'Languages' },
+  { id: 's_3', name: 'Statistics', proficiency: 85, category: 'Math' },
+  { id: 's_4', name: 'RAG Systems', proficiency: 54, category: 'AI & ML' },
+  { id: 's_5', name: 'TypeScript', proficiency: 71, category: 'Languages' },
+  { id: 's_6', name: 'Vector Databases', proficiency: 40, category: 'Infrastructure' },
+];
+
+export const achievements: Achievement[] = [
+  {
+    id: 'a_1',
+    title: 'Weekend Warrior',
+    description: 'Study 4 weekends in a row',
+    icon: 'Flame',
+    unlockedAt: '2025-07-28',
+    rarity: 'rare',
+  },
+  {
+    id: 'a_2',
+    title: 'Quiz Master',
+    description: 'Pass 50 quizzes with 90%+ score',
+    icon: 'Brain',
+    unlockedAt: '2025-07-20',
+    rarity: 'epic',
+  },
+  {
+    id: 'a_3',
+    title: 'First Steps',
+    description: 'Complete your first course',
+    icon: 'Footprints',
+    unlockedAt: '2025-06-15',
+    rarity: 'common',
+  },
+  {
+    id: 'a_4',
+    title: 'Streak Keeper',
+    description: 'Maintain a 20-day streak',
+    icon: 'Zap',
+    unlockedAt: '2025-08-01',
+    rarity: 'legendary',
+  },
+];
+
+export const recentActivity: ActivityItem[] = [
+  {
+    id: 'act_1',
+    type: 'lesson-completed',
+    title: 'Completed "Multi-head attention"',
+    detail: 'Transformers from Scratch · Module 2',
+    timestamp: '2025-08-02T09:30:00Z',
+    courseId: 'c_1',
+  },
+  {
+    id: 'act_2',
+    type: 'ai-coaching',
+    title: 'AI coaching session',
+    detail: 'Reviewed your RAG retrieval recall issues',
+    timestamp: '2025-08-02T08:10:00Z',
+  },
+  {
+    id: 'act_3',
+    type: 'lesson-completed',
+    title: 'Completed "Self-attention quiz"',
+    detail: 'Transformers from Scratch · Module 1 — +120 skill points',
+    timestamp: '2025-08-01T18:45:00Z',
+    courseId: 'c_1',
+  },
+  {
+    id: 'act_4',
+    type: 'achievement',
+    title: 'Unlocked "Streak Keeper"',
+    detail: 'Maintained a 20-day learning streak',
+    timestamp: '2025-08-01T09:00:00Z',
+  },
+  {
+    id: 'act_5',
+    type: 'course-started',
+    title: 'Started Production LLM Applications',
+    detail: 'Module 1: Why most LLM apps fail',
+    timestamp: '2025-07-30T14:20:00Z',
+    courseId: 'c_2',
+  },
+];
+
+export const aiConversations: AIConversation[] = [
+  {
+    id: 'ai_1',
+    title: 'Explain backprop intuitively',
+    preview: 'Think of backprop as a feedback system where each layer learns…',
+    lastMessageAt: '2025-08-02T09:45:00Z',
+    messageCount: 8,
+  },
+  {
+    id: 'ai_2',
+    title: 'Debug my retrieval recall',
+    preview: 'Your recall is low because chunk overlap is 0. Try 20% overlap…',
+    lastMessageAt: '2025-08-02T08:15:00Z',
+    messageCount: 12,
+  },
+  {
+    id: 'ai_3',
+    title: 'Practice interview: ML systems',
+    preview: 'Great answer. Now: how would you handle cold-start embeddings?',
+    lastMessageAt: '2025-08-01T20:30:00Z',
+    messageCount: 16,
+  },
+];
+
+export const courseCertificates: CourseCertificate[] = [
+  {
+    courseId: 'c_3',
+    courseTitle: 'Statistical Foundations for ML',
+    instructorName: 'Sara Okafor',
+    completedAt: '2025-06-15T10:00:00Z',
+    certificateId: 'AKD-2025-0042',
+  },
+  {
+    courseId: 'c_8',
+    courseTitle: 'SQL & Data Analysis',
+    instructorName: 'Sara Okafor',
+    completedAt: '2025-07-05T14:30:00Z',
+    certificateId: 'AKD-2025-0078',
+  },
+  {
+    courseId: 'c_11',
+    courseTitle: 'Linear Algebra for Machine Learning',
+    instructorName: 'Sara Okafor',
+    completedAt: '2025-07-20T09:15:00Z',
+    certificateId: 'AKD-2025-0103',
+  },
+];
+
+export const weeklyActivity = [
+  { day: 'Mon', minutes: 45 },
+  { day: 'Tue', minutes: 60 },
+  { day: 'Wed', minutes: 30 },
+  { day: 'Thu', minutes: 75 },
+  { day: 'Fri', minutes: 50 },
+  { day: 'Sat', minutes: 90 },
+  { day: 'Sun', minutes: 25 },
+];
+
+export const navGroups = [
+  {
+    label: 'Learn',
+    items: [
+      { label: 'Dashboard', to: '/student/dashboard', icon: 'LayoutDashboard' },
+      { label: 'My Courses', to: '/student/my-courses', icon: 'BookOpen' },
+      { label: 'Browse', to: '/student/browse', icon: 'Compass' },
+    ],
+  },
+  {
+    label: 'Practice',
+    items: [
+      { label: 'AI Coach', to: '/student/ai-coach', icon: 'Sparkles', badge: 'AI' },
+    ],
+  },
+  {
+    label: 'You',
+    items: [
+      { label: 'Achievements', to: '/student/achievements', icon: 'Trophy' },
+      { label: 'Settings', to: '/student/settings', icon: 'Settings' },
+    ],
+  },
+] as const;
+
+export const instructorNavGroups = [
+  {
+    label: 'Manage',
+    items: [
+      { label: 'Dashboard', to: '/instructor/dashboard', icon: 'LayoutDashboard' },
+      { label: 'My Courses', to: '/instructor/courses', icon: 'BookOpen' },
+      { label: 'Upload', to: '/instructor/upload', icon: 'Upload' },
+      { label: 'Students', to: '/instructor/students', icon: 'Users' },
+    ],
+  },
+  {
+    label: 'You',
+    items: [
+      { label: 'Settings', to: '/instructor/settings', icon: 'Settings' },
+    ],
+  },
+] as const;
+
+export const adminNavGroups = [
+  {
+    label: 'Platform',
+    items: [
+      { label: 'Dashboard', to: '/admin/dashboard', icon: 'LayoutDashboard' },
+      { label: 'Users', to: '/admin/users', icon: 'Users' },
+      { label: 'Courses', to: '/admin/courses', icon: 'BookOpen' },
+      { label: 'Course Feedback', to: '/admin/feedback', icon: 'MessageSquare' },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { label: 'Settings', to: '/admin/settings', icon: 'Settings' },
+    ],
+  },
+] as const;
