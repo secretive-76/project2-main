@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Link, useParams, useSearchParams, Navigate } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams, Navigate } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -42,6 +42,7 @@ import { formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { Course, Lesson } from '@/types';
 import { apiRequest, resolveBackendAssetUrl } from '@/lib/api';
+import { useAuth } from '@/components/providers/auth-provider';
 
 const lessonTypeIcon: Record<string, typeof VideoIcon> = {
   video: VideoIcon,
@@ -63,9 +64,16 @@ type PanelTab = 'notes' | 'messages';
 
 export function CoursePlayerPage() {
   const { slug } = useParams<{ slug: string }>();
+  const location = useLocation();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState<Course | undefined>(() => (slug ? getCourseBySlug(slug) : undefined));
   const [courseLoading, setCourseLoading] = useState(true);
+
+  const isInstructorPreview = user?.role === 'instructor' && location.pathname.startsWith('/instructor/');
+  const courseOverviewPath = isInstructorPreview
+    ? `/instructor/courses/${slug}/preview`
+    : `/student/courses/${slug}`;
 
   useEffect(() => {
     if (!slug) {
@@ -179,12 +187,12 @@ export function CoursePlayerPage() {
   }, [slug]);
 
   useEffect(() => {
-    if (course) {
+    if (course && !isInstructorPreview) {
       // Visiting the player from an enrolled course keeps its enrollment in the
       // database. The course detail page handles the explicit Enroll button.
       enrollStudent(course.id).catch(() => undefined);
     }
-  }, [course?.id]);
+  }, [course?.id, isInstructorPreview]);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -277,7 +285,7 @@ export function CoursePlayerPage() {
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileMenuOpen(true)} aria-label="Open lessons">
           <Menu className="h-5 w-5" />
         </Button>
-        <Link to={`/student/courses/${course.slug}`} className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <Link to={courseOverviewPath} className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
           <span className="hidden sm:inline">{course.title}</span>
         </Link>
@@ -303,6 +311,7 @@ export function CoursePlayerPage() {
           <LessonSidebar
             course={course}
             allLessons={allLessons}
+            courseOverviewPath={courseOverviewPath}
             currentLessonId={currentLessonId}
             isCompleted={isCompleted}
             isUnlocked={(id) => isLessonUnlocked(allLessons, id, completedLessons)}
@@ -327,6 +336,7 @@ export function CoursePlayerPage() {
               <LessonSidebar
                 course={course}
                 allLessons={allLessons}
+                courseOverviewPath={courseOverviewPath}
                 currentLessonId={currentLessonId}
                 isCompleted={isCompleted}
                 isUnlocked={(id) => isLessonUnlocked(allLessons, id, completedLessons)}
@@ -600,6 +610,7 @@ function LockedLessonNotice({ prevLessonTitle }: { prevLessonTitle: string }) {
 function LessonSidebar({
   course,
   allLessons,
+  courseOverviewPath,
   currentLessonId,
   isCompleted,
   isUnlocked,
@@ -610,6 +621,7 @@ function LessonSidebar({
 }: {
   course: ReturnType<typeof getCourseBySlug>;
   allLessons: ReturnType<typeof getAllLessons>;
+  courseOverviewPath: string;
   currentLessonId: string;
   isCompleted: (id: string) => boolean;
   isUnlocked: (id: string) => boolean;
@@ -622,7 +634,7 @@ function LessonSidebar({
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border p-4">
-        <Link to={`/student/courses/${course.slug}`} className="mb-3 block">
+        <Link to={courseOverviewPath} className="mb-3 block">
           <Logo size="sm" />
         </Link>
         <p className="line-clamp-2 text-sm font-semibold text-foreground">{course.title}</p>

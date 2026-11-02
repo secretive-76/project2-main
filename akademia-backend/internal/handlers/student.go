@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -26,10 +27,10 @@ type enrollment struct {
 }
 
 type lessonProgress struct {
-	CourseID  string     `json:"course_id"`
-	LessonID  string     `json:"lesson_id"`
-	Completed bool       `json:"completed"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	CourseID    string     `json:"course_id"`
+	LessonID    string     `json:"lesson_id"`
+	Completed   bool       `json:"completed"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
@@ -211,18 +212,18 @@ func EnrollStudent(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			enrollments = append(enrollments, map[string]any{
-				"course_id": id,
-				"slug": slug,
-				"title": title,
-				"description": description,
-				"thumbnail_url": thumbnail,
-				"category": category,
-				"difficulty": difficulty,
-				"instructor_name": instructorName,
-				"status": status,
+				"course_id":        id,
+				"slug":             slug,
+				"title":            title,
+				"description":      description,
+				"thumbnail_url":    thumbnail,
+				"category":         category,
+				"difficulty":       difficulty,
+				"instructor_name":  instructorName,
+				"status":           status,
 				"resume_lesson_id": resumeLessonID,
-				"enrolled_at": enrolledAt,
-				"completed_at": completedAt,
+				"enrolled_at":      enrolledAt,
+				"completed_at":     completedAt,
 			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"enrollments": enrollments})
@@ -232,12 +233,26 @@ func EnrollStudent(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
-	var input struct { CourseID string `json:"course_id"` }
+	var input struct {
+		CourseID string `json:"course_id"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || strings.TrimSpace(input.CourseID) == "" {
 		writeStudentError(w, http.StatusBadRequest, "course_id is required")
 		return
 	}
 	input.CourseID = strings.TrimSpace(input.CourseID)
+
+	var instructorID int
+	var courseTitle string
+	if err := config.DB.QueryRow(`SELECT instructor_id, title FROM platform_courses WHERE id=$1`, input.CourseID).Scan(&instructorID, &courseTitle); err != nil {
+		writeStudentError(w, http.StatusNotFound, "Course not found")
+		return
+	}
+	var alreadyEnrolled bool
+	if err := config.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM student_enrollments WHERE user_id=$1 AND course_id=$2)`, student.UserID, input.CourseID).Scan(&alreadyEnrolled); err != nil {
+		writeStudentError(w, http.StatusInternalServerError, "Could not check enrollment")
+		return
+	}
 
 	var item enrollment
 	err = config.DB.QueryRow(`
@@ -252,6 +267,9 @@ func EnrollStudent(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusInternalServerError, "Could not enroll in this course")
 		return
 	}
+	if !alreadyEnrolled {
+		createNotification(instructorID, "course_enrollment", "New student enrollment", fmt.Sprintf("A student enrolled in %q.", courseTitle), "/instructor/students")
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(item)
 }
@@ -265,11 +283,11 @@ func SaveLessonProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		CourseID       string `json:"course_id"`
-		LessonID       string `json:"lesson_id"`
-		Completed      bool   `json:"completed"`
-		CourseComplete bool   `json:"course_complete"`
-		DurationMinutes int   `json:"duration_minutes"`
+		CourseID        string `json:"course_id"`
+		LessonID        string `json:"lesson_id"`
+		Completed       bool   `json:"completed"`
+		CourseComplete  bool   `json:"course_complete"`
+		DurationMinutes int    `json:"duration_minutes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil || strings.TrimSpace(input.CourseID) == "" || strings.TrimSpace(input.LessonID) == "" {
 		writeStudentError(w, http.StatusBadRequest, "course_id and lesson_id are required")

@@ -38,8 +38,9 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
 Keep the service-role key private: it belongs only in the Go backend `.env`,
-never in the React frontend or GitHub. Migration 003 creates the private
-`assignment-submissions` storage bucket.
+never in the React frontend or GitHub. Create a public Storage bucket named `uploads`. The backend writes course
+thumbnails under `courses/`, lesson videos/PDFs under `lessons/`, and student
+assignments under `assignments/`.
 
 The Go API now provides:
 

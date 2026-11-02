@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -176,15 +174,6 @@ func currentAdmin(r *http.Request) (studentClaims, error) {
 	return claims, nil
 }
 
-func ensureCourseUploadDirs() {
-	paths := []string{"./uploads", "./uploads/courses", "./uploads/courses/videos", "./uploads/courses/pdfs", "./uploads/lessons"}
-	for _, p := range paths {
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			panic(err)
-		}
-	}
-}
-
 func saveLessonUpload(r *http.Request, fieldName, lessonID string) (string, error) {
 	if strings.TrimSpace(fieldName) == "" {
 		return "", nil
@@ -200,21 +189,7 @@ func saveLessonUpload(r *http.Request, fieldName, lessonID string) (string, erro
 	if extension == "" {
 		extension = ".bin"
 	}
-	relativePath := filepath.ToSlash(filepath.Join("uploads", "lessons", lessonID+extension))
-	output, err := os.Create(filepath.FromSlash(relativePath))
-	if err != nil {
-		return "", err
-	}
-	if _, err := io.Copy(output, file); err != nil {
-		_ = output.Close()
-		_ = os.Remove(filepath.FromSlash(relativePath))
-		return "", err
-	}
-	if err := output.Close(); err != nil {
-		_ = os.Remove(filepath.FromSlash(relativePath))
-		return "", err
-	}
-	return relativePath, nil
+	return config.UploadToSupabase(file, filepath.ToSlash(filepath.Join("lessons", lessonID+extension)), header.Header.Get("Content-Type"))
 }
 
 func generateCourseID() string {
@@ -282,7 +257,7 @@ func ListActiveCourses(w http.ResponseWriter, r *http.Request) {
 			item.Difficulty = difficulty.String
 		}
 		if thumbnail.Valid {
-			item.Thumbnail = thumbnail.String
+			item.Thumbnail = config.SupabaseStoragePublicURL(thumbnail.String)
 		}
 		if status.Valid {
 			item.Status = status.String
@@ -329,20 +304,12 @@ func CreateCourse(w http.ResponseWriter, r *http.Request) {
 		input.Slug = strings.ToLower(strings.ReplaceAll(input.Title, " ", "-"))
 	}
 
-	ensureCourseUploadDirs()
 	courseID := generateCourseID()
 	status := "pending"
 	thumbnailPath := strings.TrimSpace(input.Thumbnail)
 	if strings.HasPrefix(strings.ToLower(thumbnailPath), "blob:") {
 		thumbnailPath = ""
 	}
-	thumbnailStored := false
-	thumbnailCommitted := false
-	defer func() {
-		if thumbnailStored && !thumbnailCommitted {
-			_ = os.Remove(filepath.FromSlash(thumbnailPath))
-		}
-	}()
 	thumbnailFile, thumbnailHeader, fileErr := r.FormFile("thumbnail")
 	if fileErr == nil {
 		defer thumbnailFile.Close()
@@ -350,21 +317,11 @@ func CreateCourse(w http.ResponseWriter, r *http.Request) {
 		if extension == "" {
 			extension = ".jpg"
 		}
-		thumbnailPath = filepath.ToSlash(filepath.Join("uploads", "courses", courseID+extension))
-		filePath := filepath.FromSlash(thumbnailPath)
-		output, err := os.Create(filePath)
+		thumbnailPath, err = config.UploadToSupabase(thumbnailFile, filepath.ToSlash(filepath.Join("courses", courseID+extension)), thumbnailHeader.Header.Get("Content-Type"))
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not save course thumbnail"})
 			return
 		}
-		_, copyErr := io.Copy(output, thumbnailFile)
-		closeErr := output.Close()
-		if copyErr != nil || closeErr != nil {
-			_ = os.Remove(filePath)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not save course thumbnail"})
-			return
-		}
-		thumbnailStored = true
 	} else if fileErr != http.ErrMissingFile {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Could not read course thumbnail"})
 		return
@@ -399,16 +356,6 @@ func CreateCourse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	savedLessonFiles := make([]string, 0)
-	lessonsCommitted := false
-	defer func() {
-		if !lessonsCommitted {
-			for _, path := range savedLessonFiles {
-				_ = os.Remove(filepath.FromSlash(path))
-			}
-		}
-	}()
-
 	for _, moduleInput := range input.Modules {
 		moduleID := generateModuleID()
 		if _, err = tx.Exec(`INSERT INTO platform_modules (id, course_id, title, position) VALUES ($1, $2, $3, $4)`, moduleID, courseID, strings.TrimSpace(moduleInput.Title), moduleInput.Position); err != nil {
@@ -423,17 +370,11 @@ func CreateCourse(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Could not save lesson video"})
 				return
 			}
-			if videoPath != "" {
-				savedLessonFiles = append(savedLessonFiles, videoPath)
-			}
 			resourcePath, saveErr := saveLessonUpload(r, lessonInput.ResourceField, lessonID+"-resource")
 			if saveErr != nil {
 				err = saveErr
 				writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Could not save lesson resource"})
 				return
-			}
-			if resourcePath != "" {
-				savedLessonFiles = append(savedLessonFiles, resourcePath)
 			}
 			durationMinutes := lessonInput.Duration
 			if durationMinutes < 1 {
@@ -508,9 +449,6 @@ func CreateCourse(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not finalize course creation"})
 		return
 	}
-	lessonsCommitted = true
-	thumbnailCommitted = true
-
 	writeJSON(w, http.StatusCreated, map[string]any{"id": courseID, "status": status, "slug": input.Slug, "thumbnail_url": thumbnailPath, "message": "Course created successfully"})
 }
 
@@ -563,7 +501,7 @@ func ListInstructorCourses(w http.ResponseWriter, r *http.Request) {
 			"description":     description,
 			"category":        category,
 			"difficulty":      difficulty,
-			"thumbnail_url":   thumbnail,
+			"thumbnail_url":   config.SupabaseStoragePublicURL(thumbnail),
 			"status":          status,
 			"student_count":   studentCount,
 			"avg_rating":      avgRating,
@@ -642,7 +580,7 @@ func ListAdminCourses(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not read moderation queue"})
 			return
 		}
-		courses = append(courses, map[string]any{"id": id, "title": title, "slug": slug, "description": description, "category": category, "difficulty": difficulty, "thumbnail_url": thumbnail, "status": status, "instructor": instructorName, "admin_feedback": adminFeedback, "created_at": createdAt, "updated_at": updatedAt})
+		courses = append(courses, map[string]any{"id": id, "title": title, "slug": slug, "description": description, "category": category, "difficulty": difficulty, "thumbnail_url": config.SupabaseStoragePublicURL(thumbnail), "status": status, "instructor": instructorName, "admin_feedback": adminFeedback, "created_at": createdAt, "updated_at": updatedAt})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"courses": courses})
 }
@@ -676,6 +614,17 @@ func AdminCourseStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Course not found"})
 		return
 	}
+	var instructorID int
+	var courseTitle string
+	if err := config.DB.QueryRow(`SELECT instructor_id, title FROM platform_courses WHERE id=$1`, courseID).Scan(&instructorID, &courseTitle); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not resolve course instructor"})
+		return
+	}
+	statusLabel := "approved"
+	if input.Status == "disapproved" {
+		statusLabel = "rejected"
+	}
+	createNotification(instructorID, "course_status", "Course "+statusLabel, fmt.Sprintf("Your course %q was %s by an administrator.", courseTitle, statusLabel), "/instructor/courses")
 	writeJSON(w, http.StatusOK, map[string]any{"id": courseID, "status": input.Status, "message": "Course status updated"})
 }
 
@@ -839,6 +788,9 @@ func GetCourseDetail(w http.ResponseWriter, r *http.Request) {
 					WHERE lesson_id = $1`, lesson.ID,
 				).Scan(&lesson.AssignmentTitle, &lesson.AssignmentInstructions, &lesson.AssignmentPoints)
 			}
+			lesson.VideoPath = config.SupabaseStoragePublicURL(lesson.VideoPath)
+			lesson.PDFPath = config.SupabaseStoragePublicURL(lesson.PDFPath)
+			lesson.ResourcePath = config.SupabaseStoragePublicURL(lesson.ResourcePath)
 			lessons = append(lessons, lesson)
 		}
 		lessonRows.Close()
@@ -852,7 +804,7 @@ func GetCourseDetail(w http.ResponseWriter, r *http.Request) {
 		"description":   course.Description,
 		"category":      course.Category,
 		"difficulty":    course.Difficulty,
-		"thumbnail_url": course.Thumbnail,
+		"thumbnail_url": config.SupabaseStoragePublicURL(course.Thumbnail),
 		"status":        course.Status,
 		"created_at":    course.CreatedAt,
 		"updated_at":    course.UpdatedAt,
@@ -908,14 +860,24 @@ func UpdateCourseModerationStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Course not found"})
 		return
 	}
+	var instructorID int
+	var title string
+	_ = config.DB.QueryRow(`SELECT instructor_id, title FROM platform_courses WHERE id=$1`, courseID).Scan(&instructorID, &title)
+	if newStatus == "approved" || newStatus == "disapproved" {
+		decision := "approved"
+		if newStatus == "disapproved" {
+			decision = "rejected"
+		}
+		createNotification(instructorID, "course_status", "Course "+decision, fmt.Sprintf("Your course %q was %s by an administrator.", title, decision), "/instructor/courses")
+	}
 	if newStatus == "approved" {
-		var title string
-		_ = config.DB.QueryRow(`SELECT title FROM platform_courses WHERE id=$1`, courseID).Scan(&title)
 		if studentRows, queryErr := config.DB.Query(`SELECT id FROM users WHERE role='student'`); queryErr == nil {
 			defer studentRows.Close()
 			for studentRows.Next() {
 				var studentID int
-				if studentRows.Scan(&studentID) == nil { createNotification(studentID, "new_course", "New course available", title+" is now available to enroll.", "/student/courses/"+courseID) }
+				if studentRows.Scan(&studentID) == nil {
+					createNotification(studentID, "new_course", "New course available", title+" is now available to enroll.", "/student/courses/"+courseID)
+				}
 			}
 		}
 	}
@@ -1134,6 +1096,8 @@ func GetInstructorCourseDetail(w http.ResponseWriter, r *http.Request) {
 					ls.AssignmentPoints = aPoints
 				}
 			}
+			ls.VideoPath = config.SupabaseStoragePublicURL(ls.VideoPath)
+			ls.ResourcePath = config.SupabaseStoragePublicURL(ls.ResourcePath)
 
 			mod.Lessons = append(mod.Lessons, ls)
 		}
@@ -1154,7 +1118,7 @@ func GetInstructorCourseDetail(w http.ResponseWriter, r *http.Request) {
 		"description":    course.Description,
 		"category":       course.Category,
 		"difficulty":     course.Difficulty,
-		"thumbnail_url":  course.Thumbnail,
+		"thumbnail_url":  config.SupabaseStoragePublicURL(course.Thumbnail),
 		"status":         course.Status,
 		"admin_feedback": adminFeedback,
 		"created_at":     course.CreatedAt,
@@ -1258,8 +1222,6 @@ func UpdateInstructorCourseCurriculum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ensureCourseUploadDirs()
-
 	// --- Handle optional thumbnail replacement ---
 	newThumbnailPath := ""
 	thumbnailFile, thumbnailHeader, thumbErr := r.FormFile("thumbnail")
@@ -1269,16 +1231,8 @@ func UpdateInstructorCourseCurriculum(w http.ResponseWriter, r *http.Request) {
 		if ext == "" {
 			ext = ".jpg"
 		}
-		newThumbnailPath = filepath.ToSlash(filepath.Join("uploads", "courses", courseID+"-thumb"+ext))
-		out, createErr := os.Create(filepath.FromSlash(newThumbnailPath))
-		if createErr != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not save thumbnail"})
-			return
-		}
-		_, copyErr := io.Copy(out, thumbnailFile)
-		closeErr := out.Close()
-		if copyErr != nil || closeErr != nil {
-			_ = os.Remove(filepath.FromSlash(newThumbnailPath))
+		newThumbnailPath, err = config.UploadToSupabase(thumbnailFile, filepath.ToSlash(filepath.Join("courses", courseID+"-thumb"+ext)), thumbnailHeader.Header.Get("Content-Type"))
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not save thumbnail"})
 			return
 		}
@@ -1341,17 +1295,6 @@ func UpdateInstructorCourseCurriculum(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track newly saved lesson files for rollback on error
-	savedFiles := make([]string, 0)
-	filesCommitted := false
-	defer func() {
-		if !filesCommitted {
-			for _, p := range savedFiles {
-				_ = os.Remove(filepath.FromSlash(p))
-			}
-		}
-	}()
-
 	// Re-insert modules and lessons
 	for _, modInput := range input.Modules {
 		moduleID := modInput.ID
@@ -1376,20 +1319,22 @@ func UpdateInstructorCourseCurriculum(w http.ResponseWriter, r *http.Request) {
 			videoPath := strings.TrimSpace(lessonInput.KeepVideoPath)
 			if lessonInput.VideoField != "" {
 				uploaded, saveErr := saveLessonUpload(r, lessonInput.VideoField, lessonID+"-video")
-				if saveErr == nil && uploaded != "" {
-					videoPath = uploaded
-					savedFiles = append(savedFiles, videoPath)
+				if saveErr != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Could not save lesson video"})
+					return
 				}
+				videoPath = uploaded
 			}
 
 			// Determine final resource path: new upload > keep existing > empty
 			resourcePath := strings.TrimSpace(lessonInput.KeepResourcePath)
 			if lessonInput.ResourceField != "" {
 				uploaded, saveErr := saveLessonUpload(r, lessonInput.ResourceField, lessonID+"-resource")
-				if saveErr == nil && uploaded != "" {
-					resourcePath = uploaded
-					savedFiles = append(savedFiles, resourcePath)
+				if saveErr != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Could not save lesson resource"})
+					return
 				}
+				resourcePath = uploaded
 			}
 
 			lessonType := strings.TrimSpace(lessonInput.Type)
@@ -1472,8 +1417,6 @@ func UpdateInstructorCourseCurriculum(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"message": "Could not commit curriculum update"})
 		return
 	}
-	filesCommitted = true
-
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":      courseID,
 		"status":  "pending",
@@ -1716,17 +1659,17 @@ func AdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total_users":             totalUsers,
-		"total_students":          totalStudents,
-		"total_instructors":       totalInstructors,
-		"total_courses":           totalCourses,
-		"approved_courses":        approvedCourses,
-		"pending_courses":         pendingCourses,
-		"total_enrollments":       totalEnrollments,
-		"completion_rate":         math.Round(completionRate*10) / 10,
-		"pending_users":           pendingUsers,
-		"category_distribution":   categories,
-		"monthly_user_growth":     growth,
-		"users":                   users,
+		"total_users":           totalUsers,
+		"total_students":        totalStudents,
+		"total_instructors":     totalInstructors,
+		"total_courses":         totalCourses,
+		"approved_courses":      approvedCourses,
+		"pending_courses":       pendingCourses,
+		"total_enrollments":     totalEnrollments,
+		"completion_rate":       math.Round(completionRate*10) / 10,
+		"pending_users":         pendingUsers,
+		"category_distribution": categories,
+		"monthly_user_growth":   growth,
+		"users":                 users,
 	})
 }

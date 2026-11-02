@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -256,6 +257,11 @@ func CreateStudentCourseMessage(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusInternalServerError, "Could not send course message")
 		return
 	}
+	var instructorID int
+	var courseTitle string
+	if lookupErr := config.DB.QueryRow(`SELECT instructor_id, title FROM platform_courses WHERE id=$1`, strings.TrimSpace(input.CourseID)).Scan(&instructorID, &courseTitle); lookupErr == nil {
+		createNotification(instructorID, "student_message", "New student message", fmt.Sprintf("A student sent a message about %q.", courseTitle), "/instructor/messages")
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "user_id": strconv.Itoa(student.UserID), "course_id": input.CourseID, "sender_role": "student", "content": strings.TrimSpace(input.Content), "created_at": createdAt})
@@ -273,7 +279,7 @@ func InstructorCourseMessages(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusForbidden, "only instructors and admins can view course messages")
 		return
 	}
-	query := `SELECT m.id,m.student_id,m.sender_id,m.course_id,m.sender_role,m.content,m.created_at,u.name FROM student_course_messages m JOIN users u ON u.id=m.student_id JOIN platform_courses c ON c.id=m.course_id`
+	query := `SELECT m.id,m.student_id,m.sender_id,m.course_id,m.sender_role,m.content,m.created_at,u.name,c.title FROM student_course_messages m JOIN users u ON u.id=m.student_id JOIN platform_courses c ON c.id=m.course_id`
 	args := []interface{}{}
 	if viewer.Role == "instructor" {
 		query += ` WHERE c.instructor_id=$1`
@@ -289,13 +295,13 @@ func InstructorCourseMessages(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]interface{}{}
 	for rows.Next() {
 		var id, studentID, senderID int
-		var courseID, role, content, name string
+		var courseID, role, content, name, courseTitle string
 		var created time.Time
-		if err = rows.Scan(&id, &studentID, &senderID, &courseID, &role, &content, &created, &name); err != nil {
+		if err = rows.Scan(&id, &studentID, &senderID, &courseID, &role, &content, &created, &name, &courseTitle); err != nil {
 			writeStudentError(w, 500, "Could not read student messages")
 			return
 		}
-		items = append(items, map[string]interface{}{"id": id, "student_id": studentID, "sender_id": senderID, "course_id": courseID, "sender_role": role, "content": content, "created_at": created, "student_name": name})
+		items = append(items, map[string]interface{}{"id": id, "student_id": studentID, "sender_id": senderID, "course_id": courseID, "course_title": courseTitle, "sender_role": role, "content": content, "created_at": created, "student_name": name})
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"messages": items})
 }
@@ -333,10 +339,17 @@ func CreateInstructorCourseMessage(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, 500, "Could not send reply")
 		return
 	}
-	createNotification(input.StudentID, "instructor_reply", "New reply from your instructor", strings.TrimSpace(input.Content), "/student/courses/"+strings.TrimSpace(input.CourseID))
+	var recipientStudentID int
+	if err := config.DB.QueryRow(`SELECT student_id FROM platform_courses c
+		JOIN student_course_messages m ON m.course_id=c.id
+		WHERE c.id=$1 AND m.student_id=$2
+		ORDER BY m.created_at DESC LIMIT 1`, strings.TrimSpace(input.CourseID), input.StudentID).Scan(&recipientStudentID); err != nil {
+		writeStudentError(w, http.StatusInternalServerError, "Could not resolve message recipient")
+		return
+	}
+	createNotification(recipientStudentID, "instructor_reply", "New reply from your instructor", strings.TrimSpace(input.Content), "/student/courses/"+strings.TrimSpace(input.CourseID))
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "student_id": input.StudentID, "course_id": input.CourseID, "sender_role": "instructor", "content": strings.TrimSpace(input.Content), "created_at": created})
 }
-
 
 type platformNotification struct {
 	ID        int       `json:"id"`
@@ -363,21 +376,35 @@ func ensureNotificationsTable() error {
 }
 
 func createNotification(userID int, kind, title, body, link string) {
-	if userID < 1 || ensureNotificationsTable() != nil { return }
+	if userID < 1 || ensureNotificationsTable() != nil {
+		return
+	}
 	_, _ = config.DB.Exec(`INSERT INTO platform_notifications(user_id, kind, title, body, link) VALUES($1,$2,$3,$4,$5)`, userID, kind, title, body, link)
 }
 
 func Notifications(w http.ResponseWriter, r *http.Request) {
 	viewer, err := currentUser(r)
-	if err != nil { writeStudentError(w, http.StatusUnauthorized, err.Error()); return }
-	if err := ensureNotificationsTable(); err != nil { writeStudentError(w, 500, "Could not load notifications"); return }
+	if err != nil {
+		writeStudentError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if err := ensureNotificationsTable(); err != nil {
+		writeStudentError(w, 500, "Could not load notifications")
+		return
+	}
 	rows, err := config.DB.Query(`SELECT id, kind, title, body, link, is_read, created_at FROM platform_notifications WHERE user_id=$1 ORDER BY created_at DESC LIMIT 25`, viewer.UserID)
-	if err != nil { writeStudentError(w, 500, "Could not load notifications"); return }
+	if err != nil {
+		writeStudentError(w, 500, "Could not load notifications")
+		return
+	}
 	defer rows.Close()
 	items := []platformNotification{}
 	for rows.Next() {
 		var item platformNotification
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Body, &item.Link, &item.IsRead, &item.CreatedAt); err != nil { writeStudentError(w, 500, "Could not read notifications"); return }
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.Body, &item.Link, &item.IsRead, &item.CreatedAt); err != nil {
+			writeStudentError(w, 500, "Could not read notifications")
+			return
+		}
 		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"notifications": items})
@@ -385,9 +412,26 @@ func Notifications(w http.ResponseWriter, r *http.Request) {
 
 func MarkNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	viewer, err := currentUser(r)
-	if err != nil { writeStudentError(w, http.StatusUnauthorized, err.Error()); return }
-	if err := ensureNotificationsTable(); err != nil { writeStudentError(w, 500, "Could not update notifications"); return }
-	_, err = config.DB.Exec(`UPDATE platform_notifications SET is_read=TRUE WHERE user_id=$1 AND is_read=FALSE`, viewer.UserID)
-	if err != nil { writeStudentError(w, 500, "Could not update notifications"); return }
+	if err != nil {
+		writeStudentError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if err := ensureNotificationsTable(); err != nil {
+		writeStudentError(w, 500, "Could not update notifications")
+		return
+	}
+	var input struct {
+		NotificationID int `json:"notification_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&input)
+	if input.NotificationID > 0 {
+		_, err = config.DB.Exec(`UPDATE platform_notifications SET is_read=TRUE WHERE id=$1 AND user_id=$2`, input.NotificationID, viewer.UserID)
+	} else {
+		_, err = config.DB.Exec(`UPDATE platform_notifications SET is_read=TRUE WHERE user_id=$1 AND is_read=FALSE`, viewer.UserID)
+	}
+	if err != nil {
+		writeStudentError(w, 500, "Could not update notifications")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

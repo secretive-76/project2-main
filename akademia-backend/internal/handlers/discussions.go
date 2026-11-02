@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,60 +14,112 @@ import (
 
 func ListInstructorDiscussionCourses(w http.ResponseWriter, r *http.Request) {
 	viewer, err := currentUser(r)
-	if err != nil { writeStudentError(w, http.StatusUnauthorized, err.Error()); return }
-	if viewer.Role != "instructor" && viewer.Role != "admin" { writeStudentError(w, http.StatusForbidden, "only instructors and admins can view discussions"); return }
+	if err != nil {
+		writeStudentError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if viewer.Role != "instructor" && viewer.Role != "admin" {
+		writeStudentError(w, http.StatusForbidden, "only instructors and admins can view discussions")
+		return
+	}
 	query := `SELECT c.id, c.title, COALESCE(c.thumbnail_path, ''), COUNT(d.id)
 		FROM platform_courses c
 		LEFT JOIN course_discussions d ON d.course_id = c.id`
 	args := []interface{}{}
-	if viewer.Role == "instructor" { query += ` WHERE c.instructor_id = $1`; args = append(args, viewer.UserID) }
+	if viewer.Role == "instructor" {
+		query += ` WHERE c.instructor_id = $1`
+		args = append(args, viewer.UserID)
+	}
 	query += ` GROUP BY c.id, c.title, c.thumbnail_path ORDER BY c.updated_at DESC`
 	rows, err := config.DB.Query(query, args...)
-	if err != nil { log.Printf("[Discussions] course query failed: %v", err); writeStudentError(w, 500, "Could not load discussion courses"); return }
+	if err != nil {
+		log.Printf("[Discussions] course query failed: %v", err)
+		writeStudentError(w, 500, "Could not load discussion courses")
+		return
+	}
 	defer rows.Close()
 	items := make([]map[string]any, 0)
 	for rows.Next() {
-		var id, title, thumbnail string; var count int
-		if err := rows.Scan(&id, &title, &thumbnail, &count); err != nil { writeStudentError(w, 500, "Could not read discussion courses"); return }
-		items = append(items, map[string]any{"id": id, "title": title, "thumbnail_url": thumbnail, "discussion_count": count})
+		var id, title, thumbnail string
+		var count int
+		if err := rows.Scan(&id, &title, &thumbnail, &count); err != nil {
+			writeStudentError(w, 500, "Could not read discussion courses")
+			return
+		}
+		items = append(items, map[string]any{"id": id, "title": title, "thumbnail_url": config.SupabaseStoragePublicURL(thumbnail), "discussion_count": count})
 	}
-	if err := rows.Err(); err != nil { writeStudentError(w, 500, "Could not read discussion courses"); return }
+	if err := rows.Err(); err != nil {
+		writeStudentError(w, 500, "Could not read discussion courses")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"courses": items})
 }
 
 func ListInstructorCourseDiscussions(w http.ResponseWriter, r *http.Request) {
 	viewer, courseID, err := discussionViewerAndCourse(r)
-	if err != nil { writeStudentError(w, http.StatusUnauthorized, err.Error()); return }
-	if !courseOwnedByViewer(courseID, viewer) { writeStudentError(w, http.StatusForbidden, "This course is not assigned to your instructor account"); return }
+	if err != nil {
+		writeStudentError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if !courseOwnedByViewer(courseID, viewer) {
+		writeStudentError(w, http.StatusForbidden, "This course is not assigned to your instructor account")
+		return
+	}
 	rows, err := config.DB.Query(`SELECT d.id, d.title, d.content, d.status, d.created_at, u.id, u.name, u.email,
 		(SELECT COUNT(*) FROM course_discussion_replies r WHERE r.discussion_id = d.id)
 		FROM course_discussions d JOIN users u ON u.id = d.student_id
 		WHERE d.course_id = $1 ORDER BY d.created_at DESC`, courseID)
-	if err != nil { log.Printf("[Discussions] thread query failed for course=%s: %v", courseID, err); writeStudentError(w, 500, "Could not load discussions"); return }
+	if err != nil {
+		log.Printf("[Discussions] thread query failed for course=%s: %v", courseID, err)
+		writeStudentError(w, 500, "Could not load discussions")
+		return
+	}
 	defer rows.Close()
 	items := make([]map[string]any, 0)
 	for rows.Next() {
-		var id, studentID, replyCount int64; var title, content, status, name, email string; var created time.Time
-		if err := rows.Scan(&id, &title, &content, &status, &created, &studentID, &name, &email, &replyCount); err != nil { writeStudentError(w, 500, "Could not read discussions"); return }
+		var id, studentID, replyCount int64
+		var title, content, status, name, email string
+		var created time.Time
+		if err := rows.Scan(&id, &title, &content, &status, &created, &studentID, &name, &email, &replyCount); err != nil {
+			writeStudentError(w, 500, "Could not read discussions")
+			return
+		}
 		items = append(items, map[string]any{"id": id, "title": title, "content": content, "status": status, "created_at": created, "reply_count": replyCount, "student": map[string]any{"id": studentID, "name": name, "email": email}})
 	}
-	if err := rows.Err(); err != nil { writeStudentError(w, 500, "Could not read discussions"); return }
+	if err := rows.Err(); err != nil {
+		writeStudentError(w, 500, "Could not read discussions")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"discussions": items})
 }
 
 func ListInstructorDiscussionReplies(w http.ResponseWriter, r *http.Request) {
 	viewer, discussionID, err := discussionViewerAndID(r)
-	if err != nil { writeStudentError(w, http.StatusBadRequest, err.Error()); return }
-	if !discussionOwnedByViewer(discussionID, viewer) { writeStudentError(w, http.StatusForbidden, "This discussion is not in your course"); return }
+	if err != nil {
+		writeStudentError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !discussionOwnedByViewer(discussionID, viewer) {
+		writeStudentError(w, http.StatusForbidden, "This discussion is not in your course")
+		return
+	}
 	rows, err := config.DB.Query(`SELECT r.id, r.content, r.created_at, u.id, u.name, u.role
 		FROM course_discussion_replies r JOIN users u ON u.id = r.user_id
 		WHERE r.discussion_id = $1 ORDER BY r.created_at ASC`, discussionID)
-	if err != nil { writeStudentError(w, 500, "Could not load replies"); return }
+	if err != nil {
+		writeStudentError(w, 500, "Could not load replies")
+		return
+	}
 	defer rows.Close()
 	items := make([]map[string]any, 0)
 	for rows.Next() {
-		var id, userID int64; var content, name, role string; var created time.Time
-		if err := rows.Scan(&id, &content, &created, &userID, &name, &role); err != nil { writeStudentError(w, 500, "Could not read replies"); return }
+		var id, userID int64
+		var content, name, role string
+		var created time.Time
+		if err := rows.Scan(&id, &content, &created, &userID, &name, &role); err != nil {
+			writeStudentError(w, 500, "Could not read replies")
+			return
+		}
 		items = append(items, map[string]any{"id": id, "content": content, "created_at": created, "user": map[string]any{"id": userID, "name": name, "role": role}})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"replies": items})
@@ -74,45 +127,88 @@ func ListInstructorDiscussionReplies(w http.ResponseWriter, r *http.Request) {
 
 func PostInstructorDiscussionReply(w http.ResponseWriter, r *http.Request) {
 	viewer, discussionID, err := discussionViewerAndID(r)
-	if err != nil { writeStudentError(w, http.StatusBadRequest, err.Error()); return }
-	if viewer.Role != "instructor" { writeStudentError(w, http.StatusForbidden, "only instructors can reply"); return }
-	if !discussionOwnedByViewer(discussionID, viewer) { writeStudentError(w, http.StatusForbidden, "This discussion is not in your course"); return }
-	var input struct { Content string `json:"content"` }
-	if json.NewDecoder(r.Body).Decode(&input) != nil || strings.TrimSpace(input.Content) == "" { writeStudentError(w, 400, "content is required"); return }
-	var id int64; var created time.Time
+	if err != nil {
+		writeStudentError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if viewer.Role != "instructor" {
+		writeStudentError(w, http.StatusForbidden, "only instructors can reply")
+		return
+	}
+	if !discussionOwnedByViewer(discussionID, viewer) {
+		writeStudentError(w, http.StatusForbidden, "This discussion is not in your course")
+		return
+	}
+	var input struct {
+		Content string `json:"content"`
+	}
+	if json.NewDecoder(r.Body).Decode(&input) != nil || strings.TrimSpace(input.Content) == "" {
+		writeStudentError(w, 400, "content is required")
+		return
+	}
+	var id int64
+	var created time.Time
 	err = config.DB.QueryRow(`INSERT INTO course_discussion_replies(discussion_id,user_id,content) VALUES($1,$2,$3) RETURNING id,created_at`, discussionID, viewer.UserID, strings.TrimSpace(input.Content)).Scan(&id, &created)
-	if err != nil { log.Printf("[Discussions] reply insert failed: %v", err); writeStudentError(w, 500, "Could not save reply"); return }
-	if _, err = config.DB.Exec(`UPDATE course_discussions SET status='answered' WHERE id=$1`, discussionID); err != nil { log.Printf("[Discussions] status update failed: %v", err) }
+	if err != nil {
+		log.Printf("[Discussions] reply insert failed: %v", err)
+		writeStudentError(w, 500, "Could not save reply")
+		return
+	}
+	if _, err = config.DB.Exec(`UPDATE course_discussions SET status='answered' WHERE id=$1`, discussionID); err != nil {
+		log.Printf("[Discussions] status update failed: %v", err)
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "content": strings.TrimSpace(input.Content), "created_at": created, "sender_role": "instructor"})
 }
 
 func discussionViewerAndCourse(r *http.Request) (studentClaims, string, error) {
-	viewer, err := currentUser(r); if err != nil { return viewer, "", err }
-	courseID := strings.TrimSpace(r.URL.Query().Get("course_id")); if courseID == "" { return viewer, "", &httpError{"course_id is required"} }
+	viewer, err := currentUser(r)
+	if err != nil {
+		return viewer, "", err
+	}
+	courseID := strings.TrimSpace(r.URL.Query().Get("course_id"))
+	if courseID == "" {
+		return viewer, "", &httpError{"course_id is required"}
+	}
 	return viewer, courseID, nil
 }
 
 func discussionViewerAndID(r *http.Request) (studentClaims, int64, error) {
-	viewer, err := currentUser(r); if err != nil { return viewer, 0, err }
-	id, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("discussion_id")), 10, 64); if err != nil || id < 1 { return viewer, 0, &httpError{"discussion_id is required"} }
+	viewer, err := currentUser(r)
+	if err != nil {
+		return viewer, 0, err
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("discussion_id")), 10, 64)
+	if err != nil || id < 1 {
+		return viewer, 0, &httpError{"discussion_id is required"}
+	}
 	return viewer, id, nil
 }
 
 type httpError struct{ message string }
+
 func (e *httpError) Error() string { return e.message }
 
 func courseOwnedByViewer(courseID string, viewer studentClaims) bool {
-	query := `SELECT EXISTS(SELECT 1 FROM platform_courses WHERE id=$1)`; args := []interface{}{courseID}
-	if viewer.Role == "instructor" { query = `SELECT EXISTS(SELECT 1 FROM platform_courses WHERE id=$1 AND instructor_id=$2)`; args = append(args, viewer.UserID) }
-	var allowed bool; return config.DB.QueryRow(query, args...).Scan(&allowed) == nil && allowed
+	query := `SELECT EXISTS(SELECT 1 FROM platform_courses WHERE id=$1)`
+	args := []interface{}{courseID}
+	if viewer.Role == "instructor" {
+		query = `SELECT EXISTS(SELECT 1 FROM platform_courses WHERE id=$1 AND instructor_id=$2)`
+		args = append(args, viewer.UserID)
+	}
+	var allowed bool
+	return config.DB.QueryRow(query, args...).Scan(&allowed) == nil && allowed
 }
 
 func discussionOwnedByViewer(discussionID int64, viewer studentClaims) bool {
-	query := `SELECT EXISTS(SELECT 1 FROM course_discussions d JOIN platform_courses c ON c.id=d.course_id WHERE d.id=$1)`; args := []interface{}{discussionID}
-	if viewer.Role == "instructor" { query = `SELECT EXISTS(SELECT 1 FROM course_discussions d JOIN platform_courses c ON c.id=d.course_id WHERE d.id=$1 AND c.instructor_id=$2)`; args = append(args, viewer.UserID) }
-	var allowed bool; return config.DB.QueryRow(query, args...).Scan(&allowed) == nil && allowed
+	query := `SELECT EXISTS(SELECT 1 FROM course_discussions d JOIN platform_courses c ON c.id=d.course_id WHERE d.id=$1)`
+	args := []interface{}{discussionID}
+	if viewer.Role == "instructor" {
+		query = `SELECT EXISTS(SELECT 1 FROM course_discussions d JOIN platform_courses c ON c.id=d.course_id WHERE d.id=$1 AND c.instructor_id=$2)`
+		args = append(args, viewer.UserID)
+	}
+	var allowed bool
+	return config.DB.QueryRow(query, args...).Scan(&allowed) == nil && allowed
 }
-
 
 // ---------------------------------------------------------------------------
 // Student-facing discussion endpoints
@@ -199,14 +295,19 @@ func CreateStudentDiscussion(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusInternalServerError, "Could not create discussion")
 		return
 	}
+	var instructorID int
+	var courseTitle string
+	if lookupErr := config.DB.QueryRow(`SELECT c.instructor_id, c.title FROM platform_courses c WHERE c.id=$1`, strings.TrimSpace(input.CourseID)).Scan(&instructorID, &courseTitle); lookupErr == nil {
+		createNotification(instructorID, "discussion_update", "New course discussion", fmt.Sprintf("A student started a discussion in %q: %s", courseTitle, strings.TrimSpace(input.Title)), "/instructor/discussions/"+strings.TrimSpace(input.CourseID))
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":         id,
-		"course_id":  strings.TrimSpace(input.CourseID),
-		"title":      strings.TrimSpace(input.Title),
-		"content":    strings.TrimSpace(input.Content),
-		"status":     "needs_answer",
-		"created_at": created,
+		"id":          id,
+		"course_id":   strings.TrimSpace(input.CourseID),
+		"title":       strings.TrimSpace(input.Title),
+		"content":     strings.TrimSpace(input.Content),
+		"status":      "needs_answer",
+		"created_at":  created,
 		"reply_count": 0,
 	})
 }
@@ -399,11 +500,16 @@ func PostStudentDiscussionReply(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, http.StatusInternalServerError, "Could not save reply")
 		return
 	}
+	var instructorID int
+	var courseTitle string
+	if lookupErr := config.DB.QueryRow(`SELECT c.instructor_id, c.title FROM course_discussions d JOIN platform_courses c ON c.id=d.course_id WHERE d.id=$1`, discussionID).Scan(&instructorID, &courseTitle); lookupErr == nil {
+		createNotification(instructorID, "discussion_update", "New discussion reply", fmt.Sprintf("A student replied in %q.", courseTitle), "/instructor/discussions")
+	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"id":         id,
-		"content":    strings.TrimSpace(input.Content),
-		"created_at": created,
+		"id":          id,
+		"content":     strings.TrimSpace(input.Content),
+		"created_at":  created,
 		"sender_role": "student",
 	})
 }

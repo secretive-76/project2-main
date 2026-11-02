@@ -3,6 +3,7 @@ const BACKEND_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:8081')
   .replace(/\/api$/i, '');
 const API_BASE_URL = `${BACKEND_ORIGIN}/api`;
 export const BACKEND_BASE_URL = BACKEND_ORIGIN;
+const SUPABASE_STORAGE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
 
 export const getImageUrl = (path?: string | null): string => {
   if (!path) return '';
@@ -10,6 +11,10 @@ export const getImageUrl = (path?: string | null): string => {
     return path;
   }
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (SUPABASE_STORAGE_URL && cleanPath.startsWith('/uploads/')) {
+    const objectPath = cleanPath.slice('/uploads/'.length).split('/').map(encodeURIComponent).join('/');
+    return `${SUPABASE_STORAGE_URL}/storage/v1/object/public/uploads/${objectPath}`;
+  }
   // In Vite development, /uploads is proxied to Go so PDF.js can read course
   // documents without a cross-origin request.
   if (import.meta.env.DEV && cleanPath.startsWith('/uploads/')) return cleanPath;

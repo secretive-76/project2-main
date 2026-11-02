@@ -76,7 +76,11 @@ export function Navbar({ onMenuClick }: NavbarProps) {
 
   const settingsPath = `${roleDashboardPath[role].replace('/dashboard', '')}/settings`;
   const unreadNotifications = notifications.filter((item) => !item.is_read).length;
-  const markNotificationsRead = () => { void apiRequest('/notifications/read', { method: 'POST', body: JSON.stringify({}) }).then(() => setNotifications((items) => items.map((item) => ({ ...item, is_read: true })))).catch(() => undefined); };
+  const markNotificationRead = (notificationId: number) => {
+    void apiRequest('/notifications/read', { method: 'POST', body: JSON.stringify({ notification_id: notificationId }) })
+      .then(() => setNotifications((items) => items.map((item) => item.id === notificationId ? { ...item, is_read: true } : item)))
+      .catch(() => undefined);
+  };
 
   return (
     <>
@@ -97,9 +101,6 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Search or ask Akademia…</span>
-          <kbd className="hidden shrink-0 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-[10px] font-medium text-muted-foreground sm:flex">
-            ⌘K
-          </kbd>
         </button>
 
         <div className="ml-auto flex items-center gap-1">
@@ -123,7 +124,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
 
           <ThemeToggle />
 
-          <DropdownMenu onOpenChange={(open) => { if (open && unreadNotifications) markNotificationsRead(); }}>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground" aria-label="Notifications">
                 <Bell className="h-[1.15rem] w-[1.15rem]" />
@@ -133,7 +134,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             <DropdownMenuContent align="end" className="w-80">
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {notifications.length === 0 ? <p className="px-3 py-5 text-center text-sm text-muted-foreground">No notifications yet</p> : notifications.slice(0, 6).map((item) => <DropdownMenuItem key={item.id} className="items-start whitespace-normal py-3" onClick={() => item.link && navigate(item.link)}><Bell className="mr-2 mt-0.5 h-4 w-4 shrink-0 text-primary" /><span><span className="block text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs text-muted-foreground">{item.body}</span></span></DropdownMenuItem>)}
+              {notifications.length === 0 ? <p className="px-3 py-5 text-center text-sm text-muted-foreground">No notifications yet</p> : notifications.slice(0, 6).map((item) => <DropdownMenuItem key={item.id} className="items-start whitespace-normal py-3" onClick={() => { markNotificationRead(item.id); if (item.link) navigate(item.link); }}><Bell className="mr-2 mt-0.5 h-4 w-4 shrink-0 text-primary" /><span><span className="block text-sm font-medium">{item.title}</span><span className="mt-0.5 block text-xs text-muted-foreground">{item.body}</span></span></DropdownMenuItem>)}
             </DropdownMenuContent>
           </DropdownMenu>
 

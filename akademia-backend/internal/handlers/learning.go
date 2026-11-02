@@ -18,24 +18,48 @@ import (
 	"akademia-backend/internal/config"
 )
 
-// geminiAttachmentParts loads lesson uploads from the backend's relative upload
-// paths and sends them as Gemini inline data so the model can inspect the files,
-// rather than seeing only their filenames.
+// geminiAttachmentParts loads lesson uploads from Supabase Storage and sends
+// them as Gemini inline data so the model can inspect the files.
 func geminiAttachmentParts(paths ...string) ([]map[string]any, []string) {
 	parts := make([]map[string]any, 0, len(paths))
 	labels := make([]string, 0, len(paths))
-	for _, path := range paths {
-		cleanPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(path)))
-		if cleanPath == "." || filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+	for _, storedPath := range paths {
+		storedPath = strings.TrimSpace(storedPath)
+		if storedPath == "" {
 			continue
 		}
-
-		data, err := os.ReadFile(cleanPath)
-		if err != nil {
-			log.Printf("[AI attachments] could not read %q: %v", path, err)
-			continue
+		assetURL := config.SupabaseStoragePublicURL(storedPath)
+		var data []byte
+		var contentType string
+		if strings.HasPrefix(assetURL, "http://") || strings.HasPrefix(assetURL, "https://") {
+			response, err := http.Get(assetURL)
+			if err != nil {
+				log.Printf("[AI attachments] could not fetch %q: %v", storedPath, err)
+				continue
+			}
+			data, err = io.ReadAll(response.Body)
+			contentType = response.Header.Get("Content-Type")
+			response.Body.Close()
+			if err != nil || response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+				log.Printf("[AI attachments] could not fetch %q: status %s", storedPath, response.Status)
+				continue
+			}
+		} else {
+			cleanPath := filepath.Clean(filepath.FromSlash(storedPath))
+			if cleanPath == "." || filepath.IsAbs(cleanPath) || cleanPath == ".." || strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) {
+				continue
+			}
+			var err error
+			data, err = os.ReadFile(cleanPath)
+			if err != nil {
+				log.Printf("[AI attachments] could not read %q: %v", storedPath, err)
+				continue
+			}
 		}
-		contentType := mime.TypeByExtension(filepath.Ext(cleanPath))
+		contentType = strings.Split(contentType, ";")[0]
+		if contentType == "" {
+			contentType = mime.TypeByExtension(filepath.Ext(storedPath))
+		}
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
@@ -45,7 +69,7 @@ func geminiAttachmentParts(paths ...string) ([]map[string]any, []string) {
 				"data":      data,
 			},
 		})
-		labels = append(labels, filepath.Base(cleanPath))
+		labels = append(labels, filepath.Base(storedPath))
 	}
 	return parts, labels
 }
@@ -456,30 +480,26 @@ func SubmitAssignment(w http.ResponseWriter, r *http.Request) {
 		writeStudentError(w, 400, "Only PDF assignments are accepted")
 		return
 	}
-	dir := "./uploads/assignments"
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		writeStudentError(w, 500, "Could not create assignment storage")
-		return
-	}
-	relativePath := filepath.ToSlash(filepath.Join("uploads", "assignments", fmt.Sprintf("student-%d-%d-%s", student.UserID, time.Now().UnixNano(), base)))
-	output, err := os.Create(filepath.FromSlash(relativePath))
+	objectPath := filepath.ToSlash(filepath.Join("assignments", fmt.Sprintf("student-%d-%d-%s", student.UserID, time.Now().UnixNano(), base)))
+	storagePath, err := config.UploadToSupabase(bytes.NewReader(body), objectPath, header.Header.Get("Content-Type"))
 	if err != nil {
 		writeStudentError(w, 500, "Could not save assignment")
 		return
 	}
-	if _, err = output.Write(body); err != nil {
-		output.Close()
-		_ = os.Remove(filepath.FromSlash(relativePath))
-		writeStudentError(w, 500, "Could not save assignment")
-		return
-	}
-	output.Close()
 	var id int
-	err = config.DB.QueryRow(`INSERT INTO student_assignment_submissions(student_id,course_id,lesson_id,file_name,storage_path) VALUES($1,$2,$3,$4,$5) ON CONFLICT(student_id,lesson_id) DO UPDATE SET file_name=EXCLUDED.file_name,storage_path=EXCLUDED.storage_path,submitted_at=NOW() RETURNING id`, student.UserID, courseID, lessonID, base, relativePath).Scan(&id)
+	err = config.DB.QueryRow(`INSERT INTO student_assignment_submissions(student_id,course_id,lesson_id,file_name,storage_path) VALUES($1,$2,$3,$4,$5) ON CONFLICT(student_id,lesson_id) DO UPDATE SET file_name=EXCLUDED.file_name,storage_path=EXCLUDED.storage_path,submitted_at=NOW() RETURNING id`, student.UserID, courseID, lessonID, base, storagePath).Scan(&id)
 	if err != nil {
-		_ = os.Remove(filepath.FromSlash(relativePath))
 		writeStudentError(w, 500, "Could not save assignment submission")
 		return
+	}
+	var instructorID int
+	var courseTitle, lessonTitle string
+	if lookupErr := config.DB.QueryRow(`SELECT c.instructor_id, c.title, l.title
+		FROM platform_courses c
+		JOIN platform_modules m ON m.course_id=c.id
+		JOIN platform_lessons l ON l.module_id=m.id
+		WHERE c.id=$1 AND l.id=$2`, courseID, lessonID).Scan(&instructorID, &courseTitle, &lessonTitle); lookupErr == nil {
+		createNotification(instructorID, "assignment_submission", "New assignment submission", fmt.Sprintf("A student submitted %q for %q.", base, lessonTitle), "/instructor/grading")
 	}
 	json.NewEncoder(w).Encode(map[string]interface{}{"id": id, "file_name": base, "submitted": true})
 }
@@ -1050,9 +1070,18 @@ func GradeAssignmentSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[GradeAssignment] Grade saved — student=%d course=%s lesson=%s score=%d rows_affected=%d", req.StudentID, req.CourseID, req.LessonID, req.Score, rows)
+	var recipientStudentID int
 	var courseTitle string
-	_ = config.DB.QueryRow(`SELECT title FROM platform_courses WHERE id=$1`, req.CourseID).Scan(&courseTitle)
-	createNotification(req.StudentID, "assignment_graded", "Assignment graded", courseTitle+" — score: "+strconv.Itoa(req.Score)+"/100", "/student/courses/"+req.CourseID)
+	if err := config.DB.QueryRow(`
+		SELECT u.id, c.title
+		FROM users u
+		JOIN student_enrollments e ON e.user_id=u.id
+		JOIN platform_courses c ON c.id=e.course_id
+		WHERE u.id=$1 AND e.course_id=$2`, req.StudentID, req.CourseID).Scan(&recipientStudentID, &courseTitle); err != nil {
+		writeStudentError(w, http.StatusInternalServerError, "Could not resolve notification recipient")
+		return
+	}
+	createNotification(recipientStudentID, "assignment_graded", "Assignment graded", courseTitle+" — score: "+strconv.Itoa(req.Score)+"/100", "/student/courses/"+req.CourseID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"student_id": req.StudentID,
 		"course_id":  req.CourseID,

@@ -887,7 +887,7 @@ export function InstructorCoursesPage() {
                         <Edit className="mr-2 h-4 w-4" />
                         Edit Course
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => navigate(`/courses/${course.id}`)}>
+                      <DropdownMenuItem onClick={() => navigate(`/instructor/courses/${encodeURIComponent(course.id)}/preview`)}>
                         <Eye className="mr-2 h-4 w-4" />
                         Preview
                       </DropdownMenuItem>

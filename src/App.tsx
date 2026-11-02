@@ -87,6 +87,8 @@ export default function App() {
                 <Route index element={<Navigate to="/instructor/dashboard" replace />} />
                 <Route path="dashboard" element={<InstructorDashboard />} />
                 <Route path="courses" element={<InstructorCoursesPage />} />
+                <Route path="courses/:slug/preview" element={<CourseDetailPage />} />
+                <Route path="courses/:slug/preview/learn" element={<CoursePlayerPage />} />
                 <Route path="grading" element={<InstructorGradingPage />} />
                 <Route path="students" element={<InstructorStudentsPage />} />
                 <Route path="discussions" element={<InstructorDiscussionsPage />} />

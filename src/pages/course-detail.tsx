@@ -142,8 +142,8 @@ export function CourseDetailPage() {
                 timeLimitMinutes: lesson.duration_minutes || 10,
                 type: String(lesson.lesson_type || lesson.type || 'video').toLowerCase(),
                 completed: false,
-                videoUrl: resolveBackendAssetUrl(lesson.video_path),
-                pdfUrl: resolveBackendAssetUrl(lesson.resource_path),
+                videoUrl: resolveBackendAssetUrl(lesson.video_path || lesson.video_url || lesson.videoUrl),
+                pdfUrl: resolveBackendAssetUrl(lesson.resource_path || lesson.resource_url || lesson.pdf_url || lesson.pdfUrl),
                 readingContent: lesson.content || undefined,
                   quizQuestions: Array.isArray(lesson.quiz_questions || lesson.quizQuestions)
                     ? (lesson.quiz_questions || lesson.quizQuestions).map((question: any) => ({
@@ -158,11 +158,11 @@ export function CourseDetailPage() {
                   assignmentPoints: lesson.assignment_points || undefined,
                   assignmentSubmitted: false,
                 resources: [
-                  ...(lesson.resource_path
-                    ? [{ label: lesson.title + ' — Material', url: resolveBackendAssetUrl(lesson.resource_path) }]
+                  ...(lesson.resource_path || lesson.resource_url || lesson.pdf_url || lesson.pdfUrl
+                    ? [{ label: lesson.title + ' — Material', url: resolveBackendAssetUrl(lesson.resource_path || lesson.resource_url || lesson.pdf_url || lesson.pdfUrl) }]
                     : []),
-                  ...(lesson.video_path
-                    ? [{ label: lesson.title + ' — Video', url: resolveBackendAssetUrl(lesson.video_path) }]
+                  ...(lesson.video_path || lesson.video_url || lesson.videoUrl
+                    ? [{ label: lesson.title + ' — Video', url: resolveBackendAssetUrl(lesson.video_path || lesson.video_url || lesson.videoUrl) }]
                     : []),
                 ],
               })),
@@ -233,7 +233,7 @@ export function CourseDetailPage() {
   const isEnrolled = Boolean(enrollment) || course.status !== 'not-started' || progressPct > 0;
   const isInstructorPreview = user?.role === 'instructor';
   const isInstructorOwner = isInstructorPreview && String(user?.id) === String(course.instructor.id);
-  const canAccessMaterials = isEnrolled || isInstructorOwner || user?.role === 'admin';
+  const canAccessMaterials = isInstructorPreview || isEnrolled || user?.role === 'admin';
 
   const deleteCourse = async () => {
     if (!isInstructorOwner || !window.confirm('Delete this course permanently?')) return;
@@ -455,7 +455,11 @@ export function CourseDetailPage() {
           </p>
         </div>
 
-        <Accordion type="multiple" defaultValue={[course.modules[0]?.id]} className="space-y-3">
+        <Accordion
+          type="multiple"
+          defaultValue={isInstructorPreview ? course.modules.map((module) => module.id) : [course.modules[0]?.id]}
+          className="space-y-3"
+        >
           {course.modules.map((module, mIdx) => {
             const moduleLessons = module.lessons;
             const moduleCompleted = moduleLessons.filter((l) => isCompleted(l.id)).length;
@@ -465,7 +469,12 @@ export function CourseDetailPage() {
                 value={module.id}
                 className="overflow-hidden rounded-xl border border-border bg-card"
               >
-                <AccordionTrigger className="hover:no-underline px-5 py-4 [&[data-state=open]>div>svg.chevron]:rotate-90">
+                <AccordionTrigger
+                  className={cn(
+                    'hover:no-underline px-5 py-4 [&[data-state=open]>div>svg.chevron]:rotate-90',
+                    isInstructorPreview && '[&>svg:last-child]:hidden',
+                  )}
+                >
                   <div className="flex flex-1 items-center gap-3 pr-4">
                     <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-sm font-semibold text-primary">
                       {mIdx + 1}
@@ -476,7 +485,9 @@ export function CourseDetailPage() {
                         {moduleLessons.length} lessons &middot; {moduleCompleted} completed
                       </p>
                     </div>
-                    <ChevronDown className="chevron h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                    {!isInstructorPreview && (
+                      <ChevronDown className="chevron h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                    )}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pb-1">
@@ -491,7 +502,9 @@ export function CourseDetailPage() {
                       return (
                         <li key={lesson.id}>
                           <Link
-                            to={`/student/courses/${course.slug}/learn?lesson=${lesson.id}`}
+                            to={isInstructorPreview
+                              ? `/instructor/courses/${course.id}/preview/learn?lesson=${lesson.id}`
+                              : `/student/courses/${course.slug}/learn?lesson=${lesson.id}`}
                             className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-accent/50"
                           >
                             {done ? (
@@ -508,7 +521,9 @@ export function CourseDetailPage() {
                             <span className="shrink-0 text-xs text-muted-foreground">
                               {formatDuration(lesson.durationMinutes)}
                             </span>
-                            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            {!isInstructorPreview && (
+                              <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                            )}
                           </Link>
                           {canAccessMaterials && (lesson.videoUrl || lesson.pdfUrl) && (
                             <div className="flex items-center gap-2 px-5 pb-3">
