@@ -289,11 +289,11 @@ export function CourseDetailPage() {
     <div className="animate-in-slide space-y-8">
       {/* Breadcrumb */}
       <Link
-        to={isInstructorPreview ? '/instructor/dashboard' : '/student/browse'}
+        to={isInstructorPreview ? '/instructor/dashboard' : user?.role === 'admin' ? '/admin/courses' : '/student/browse'}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        {isInstructorPreview ? 'Back to dashboard' : 'Back to catalog'}
+        {isInstructorPreview ? 'Back to dashboard' : user?.role === 'admin' ? 'Back to course moderation' : 'Back to catalog'}
       </Link>
 
       {/* Hero */}
@@ -397,7 +397,7 @@ export function CourseDetailPage() {
                   </div>
                 )}
 
-                {!isInstructorPreview && (
+                {!isInstructorPreview && user?.role !== 'admin' && (
                   <Button className="w-full" size="lg" onClick={startOrEnroll} disabled={enrolling}>
                       {isEnrolled ? (
                         <>

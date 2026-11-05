@@ -118,6 +118,7 @@ export default function App() {
                 <Route path="feedback" element={<CourseFeedbackPage />} />
                 <Route path="users" element={<AdminUsersPage />} />
                 <Route path="courses" element={<AdminCoursesPage />} />
+                <Route path="courses/:slug/preview" element={<CourseDetailPage />} />
                 <Route path="settings" element={<SettingsPage />} />
               </Route>
             </Route>

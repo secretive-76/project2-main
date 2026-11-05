@@ -317,6 +317,22 @@ func VerifyOTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[VerifyOTP] Account created for %s (role=%s, pending approval)", input.Email, role)
 
+	// Notify every admin that a new registration is awaiting approval so it
+	// appears in the admin notification bell with a red unread count.
+	adminRows, qErr := config.DB.Query(`SELECT id FROM users WHERE role = 'admin'`)
+	if qErr == nil {
+		for adminRows.Next() {
+			var adminID int
+			if adminRows.Scan(&adminID) == nil {
+				createNotification(adminID, "pending_approval",
+					"New registration awaiting approval",
+					fmt.Sprintf("%s (%s) verified their email and is waiting for approval.", userName, userRole),
+					"/admin/users")
+			}
+		}
+		adminRows.Close()
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"pending": true,
 		"message": "Email verified! Your account is pending admin approval. You will be notified once approved.",

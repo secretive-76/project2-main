@@ -128,7 +128,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground" aria-label="Notifications">
                 <Bell className="h-[1.15rem] w-[1.15rem]" />
-                {unreadNotifications > 0 && <span className="absolute right-2 top-2 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}
+                {unreadNotifications > 0 && <span className={cn("absolute right-2 top-2 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-bold ring-2 ring-background", role === 'admin' ? 'bg-red-500 text-white' : 'bg-primary text-primary-foreground')}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
