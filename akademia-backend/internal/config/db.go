@@ -25,5 +25,17 @@ func ConnectDB() {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 
+	_, err = DB.Exec(`
+		CREATE TABLE IF NOT EXISTS email_otps (
+			email VARCHAR(255) PRIMARY KEY,
+			otp VARCHAR(10) NOT NULL,
+			expires_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	if err != nil {
+		log.Fatalf("Failed to create email_otps table: %v", err)
+	}
+
 	fmt.Println("Database connection established successfully!")
 }
