@@ -13,14 +13,9 @@ import (
 var DB *sql.DB
 
 func ConnectDB() {
-	connStr := os.Getenv("DATABASE_URL")
-	if !strings.Contains(connStr, "prefer_simple_protocol=") {
-		separator := "?"
-		if strings.Contains(connStr, "?") {
-			separator = "&"
-		}
-		connStr += separator + "prefer_simple_protocol=true"
-	}
+    connStr := os.Getenv("DATABASE_URL")
+    // Uses the DATABASE_URL directly without appending unsupported query parameters
+}
 	var err error
 	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
