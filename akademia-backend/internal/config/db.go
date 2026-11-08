@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 
 	_ "github.com/lib/pq"
 )
@@ -13,9 +12,9 @@ import (
 var DB *sql.DB
 
 func ConnectDB() {
-    connStr := os.Getenv("DATABASE_URL")
-    // Uses the DATABASE_URL directly without appending unsupported query parameters
-}
+	connStr := os.Getenv("DATABASE_URL")
+	// Uses the DATABASE_URL directly without appending unsupported query parameters
+
 	var err error
 	DB, err = sql.Open("postgres", connStr)
 	if err != nil {
