@@ -525,8 +525,6 @@ const handleOpenEdit = async (course: CourseItem) => {
     ]);
   };
 
- const API_BASE = import.meta.env.VITE_API_URL || '';
-
 const handleCreateCourse = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!newTitle.trim()) return;
@@ -569,7 +567,7 @@ const handleCreateCourse = async (e: React.FormEvent) => {
           .filter((q) => q.question.trim() && q.choices.some((c) => c.trim()))
           .map((q, qIdx) => ({
             question: q.question.trim(),
-            choices: q.choices.filter((c) => c.trim())),
+            choices: q.choices.filter((c) => c.trim()),
             correct_choice: q.correctChoice,
             position: qIdx,
           })),
@@ -631,8 +629,6 @@ const handleCreateCourse = async (e: React.FormEvent) => {
     toast.error(error instanceof Error ? error.message : 'Could not save the course.');
   }
 };
-
-const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const handleUpdateCourse = async (e: React.FormEvent) => {
   e.preventDefault();
