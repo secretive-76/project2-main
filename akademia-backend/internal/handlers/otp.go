@@ -1,20 +1,19 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"akademia-backend/internal/config"
 
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/gomail.v2"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -30,23 +29,58 @@ func generate6DigitOTP() (string, error) {
 	return fmt.Sprintf("%06d", n), nil
 }
 
-// sendOTPEmail dispatches the OTP to the given address via Gmail SMTP.
-// Uses the SMTP_USER / SMTP_PASS / SMTP_HOST / SMTP_PORT env vars.
-func sendOTPEmail(toEmail, toName, otp, role string) error {
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPortStr := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
-
-	if smtpHost == "" || smtpUser == "" || smtpPass == "" {
-		return fmt.Errorf("SMTP is not configured (SMTP_HOST / SMTP_USER / SMTP_PASS missing)")
+// sendEmail uses Resend's HTTPS API so email delivery works on hosts that
+// restrict outbound SMTP connections.
+func sendEmail(toEmail, subject, htmlBody string) error {
+	apiKey := os.Getenv("RESEND_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("RESEND_API_KEY is not configured")
 	}
 
-	smtpPort, err := strconv.Atoi(smtpPortStr)
+	from := os.Getenv("RESEND_FROM")
+	if from == "" {
+		from = "onboarding@resend.dev"
+	}
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"from":    from,
+		"to":      []string{toEmail},
+		"subject": subject,
+		"html":    htmlBody,
+	})
 	if err != nil {
-		smtpPort = 587
+		return fmt.Errorf("encode email request: %w", err)
 	}
 
+	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("create email request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send email request: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		var errorResponse struct {
+			Message string `json:"message"`
+		}
+		if decodeErr := json.NewDecoder(response.Body).Decode(&errorResponse); decodeErr == nil && errorResponse.Message != "" {
+			return fmt.Errorf("Resend rejected email: %s", errorResponse.Message)
+		}
+		return fmt.Errorf("Resend rejected email with status %s", response.Status)
+	}
+
+	return nil
+}
+
+// sendOTPEmail dispatches the OTP through Resend's HTTPS API.
+func sendOTPEmail(toEmail, toName, otp, role string) error {
 	roleLabel := strings.Title(role)
 
 	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
@@ -96,14 +130,11 @@ func sendOTPEmail(toEmail, toName, otp, role string) error {
 </body>
 </html>`, toName, roleLabel, otp, time.Now().Year())
 
-	m := gomail.NewMessage()
-	m.SetHeader("From", fmt.Sprintf("Akademia <%s>", smtpUser))
-	m.SetHeader("To", toEmail)
-	m.SetHeader("Subject", fmt.Sprintf("[Akademia] Your %s verification code: %s", roleLabel, otp))
-	m.SetBody("text/html", htmlBody)
-
-	d := gomail.NewDialer(smtpHost, smtpPort, smtpUser, smtpPass)
-	return d.DialAndSend(m)
+	return sendEmail(
+		toEmail,
+		fmt.Sprintf("[Akademia] Your %s verification code: %s", roleLabel, otp),
+		htmlBody,
+	)
 }
 
 // ── SendOTP ───────────────────────────────────────────────────────────────────
@@ -555,19 +586,6 @@ func ResetPassword(w http.ResponseWriter, r *http.Request) {
 // ── sendPasswordResetEmail ────────────────────────────────────────────────────
 
 func sendPasswordResetEmail(toEmail, toName, otp string) error {
-	smtpHost := os.Getenv("SMTP_HOST")
-	smtpPortStr := os.Getenv("SMTP_PORT")
-	smtpUser := os.Getenv("SMTP_USER")
-	smtpPass := os.Getenv("SMTP_PASS")
-
-	if smtpHost == "" || smtpUser == "" || smtpPass == "" {
-		return fmt.Errorf("SMTP is not configured")
-	}
-	smtpPort, err := strconv.Atoi(smtpPortStr)
-	if err != nil {
-		smtpPort = 587
-	}
-
 	displayName := toName
 	if displayName == "" {
 		displayName = toEmail
@@ -617,12 +635,9 @@ func sendPasswordResetEmail(toEmail, toName, otp string) error {
 </body>
 </html>`, displayName, otp, time.Now().Year())
 
-	m := gomail.NewMessage()
-	m.SetHeader("From", fmt.Sprintf("Akademia <%s>", smtpUser))
-	m.SetHeader("To", toEmail)
-	m.SetHeader("Subject", fmt.Sprintf("[Akademia] Password reset code: %s", otp))
-	m.SetBody("text/html", htmlBody)
-
-	d := gomail.NewDialer(smtpHost, smtpPort, smtpUser, smtpPass)
-	return d.DialAndSend(m)
+	return sendEmail(
+		toEmail,
+		fmt.Sprintf("[Akademia] Password reset code: %s", otp),
+		htmlBody,
+	)
 }

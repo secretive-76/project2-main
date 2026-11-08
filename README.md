@@ -17,7 +17,17 @@ go run .
 ```
 
 Before starting the backend, copy `akademia-backend/.env.example` to
-`akademia-backend/.env`, then fill in `DATABASE_URL` and `JWT_SECRET`.
+`akademia-backend/.env`, then fill in `DATABASE_URL`, `JWT_SECRET`, and the
+Resend settings used for OTP and password-reset emails:
+
+```env
+RESEND_API_KEY=re_your_api_key
+RESEND_FROM=onboarding@resend.dev
+```
+
+For production, use a sender address verified in Resend instead of the default
+onboarding address. Resend uses HTTPS, so it works on Render without outbound
+SMTP connections.
 
 ## Student portal database setup
 
