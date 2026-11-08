@@ -20,7 +20,7 @@ interface AuthContextValue {
 }
 
 const SESSION_KEY = 'akademia-session';
-const API_BASE = 'http://localhost:8081';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 /** Default avatar based on role */
 function defaultAvatar(role: UserRole): string {
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } catch {
       throw new Error(
-        'Cannot reach the server. Make sure the backend is running on port 8081.'
+        'Cannot reach the server. Make sure the backend is running.'
       );
     }
 
@@ -86,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) {
       throw new Error(data.message || 'Failed to create account. Please try again.');
     }
-    // Account created — do not set session, let the user log in manually
   };
 
   /**
@@ -111,32 +110,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       authedUser = toAuthUser(data.user);
 
-      // Store the JWT for future authenticated requests
       if (data.token) {
         localStorage.setItem('akademia-token', data.token);
       }
     } catch (err: unknown) {
-      // If the error is a known API error (has a message we set), rethrow it
       if (err instanceof Error && !err.message.includes('fetch')) {
         throw err;
       }
-      // Admin login never falls back to demo accounts — the backend must be reachable
       if (role === 'admin') {
-        throw new Error('Cannot reach the server. Make sure the backend is running on port 8081.');
+        throw new Error('Cannot reach the server.');
       }
-      // Backend is unreachable — fall back to demo accounts (student/instructor only)
       authedUser = signInDemo(email, password);
     }
 
-    // Enforce portal role if specified
     if (role && authedUser.role !== role) {
       throw new Error(
         `This account is registered as a ${authedUser.role}. Please use the ${authedUser.role} login portal.`
       );
     }
 
-    // Prevent a previous user's enrollment/progress cache being shown after a
-    // different account signs in on the same browser.
     resetStudentPortalState();
     localStorage.setItem(SESSION_KEY, JSON.stringify(authedUser));
     setUser(authedUser);
@@ -157,8 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Demo account fallback — only used when the backend is not running.
- *  Admin is intentionally excluded: admin login always requires the live backend. */
 const DEMO_ACCOUNTS = [
   { email: 'student@akademia.com', password: 'student123', user: { id: 'u_student', name: 'Alex Rivera', email: 'student@akademia.com', role: 'student' as UserRole, avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=128&h=128&fit=crop&crop=faces&q=80' } },
   { email: 'instructor@akademia.com', password: 'instructor123', user: { id: 'u_instructor', name: 'Dr. Sarah Chen', email: 'instructor@akademia.com', role: 'instructor' as UserRole, avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=128&h=128&fit=crop&crop=faces&q=80' } },

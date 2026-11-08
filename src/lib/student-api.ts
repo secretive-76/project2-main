@@ -152,10 +152,21 @@ export const loadLearningSummary = () => apiRequest('/student/dashboard') as Pro
 export const saveQuizAttempt = (quizId: string, score: number, totalQuestions: number, correctAnswers: number) =>
   apiRequest('/student/quiz-attempts', { method: 'POST', body: JSON.stringify({ quiz_id: quizId, score, total_questions: totalQuestions, correct_answers: correctAnswers }) });
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export async function submitAssignment(courseId: string, lessonId: string, file: File) {
   const token = localStorage.getItem('akademia-token');
-  const data = new FormData(); data.append('course_id', courseId); data.append('lesson_id', lessonId); data.append('assignment_file', file);
-  const response = await fetch('http://localhost:8081/api/student/assignments/submit', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: data });
+  const data = new FormData(); 
+  data.append('course_id', courseId); 
+  data.append('lesson_id', lessonId); 
+  data.append('assignment_file', file);
+
+  const response = await fetch(`${API_BASE}/api/student/assignments/submit`, { 
+    method: 'POST', 
+    headers: token ? { Authorization: `Bearer ${token}` } : {}, 
+    body: data 
+  });
+
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(payload?.message || 'Could not submit assignment');

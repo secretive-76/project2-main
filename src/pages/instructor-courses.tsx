@@ -195,102 +195,104 @@ export function InstructorCoursesPage() {
     }
   };
 
-  const handleOpenEdit = async (course: CourseItem) => {
-    // Populate basic metadata immediately so the modal opens right away
-    setEditingCourse(course);
-    setEditTitle(course.title);
-    setEditCategory(course.category);
-    setEditPriceType(course.priceType);
-    setEditPrice(course.price);
-    setEditCoverImage(null);
-    setEditAdminFeedback('');
-    setEditCurriculumLoading(true);
+ const API_BASE = import.meta.env.VITE_API_URL || '';
 
-    // Reset modules to a blank placeholder while loading
-    setModules([
-      {
-        id: 'm-1',
-        title: 'Loading curriculum…',
-        isFreePreview: course.priceType === 'free',
-        lectures: [{ id: 'l-1', title: '', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
-      },
-    ]);
+const handleOpenEdit = async (course: CourseItem) => {
+  // Populate basic metadata immediately so the modal opens right away
+  setEditingCourse(course);
+  setEditTitle(course.title);
+  setEditCategory(course.category);
+  setEditPriceType(course.priceType);
+  setEditPrice(course.price);
+  setEditCoverImage(null);
+  setEditAdminFeedback('');
+  setEditCurriculumLoading(true);
 
-    try {
-      const token = localStorage.getItem('akademia-token');
-      const res = await fetch(`http://localhost:8081/api/instructor/courses/${encodeURIComponent(course.id)}`, {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Could not load course curriculum');
+  // Reset modules to a blank placeholder while loading
+  setModules([
+    {
+      id: 'm-1',
+      title: 'Loading curriculum…',
+      isFreePreview: course.priceType === 'free',
+      lectures: [{ id: 'l-1', title: '', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
+    },
+  ]);
 
-      // Show admin feedback banner when the course was disapproved
-      if (data.admin_feedback) setEditAdminFeedback(data.admin_feedback);
+  try {
+    const token = localStorage.getItem('akademia-token');
+    const res = await fetch(`${API_BASE}/api/instructor/courses/${encodeURIComponent(course.id)}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Could not load course curriculum');
 
-      // Map the API response into the editor's ModuleItem shape
-      const hydratedModules: ModuleItem[] = Array.isArray(data.modules) && data.modules.length > 0
-        ? data.modules.map((mod: {
+    // Show admin feedback banner when the course was disapproved
+    if (data.admin_feedback) setEditAdminFeedback(data.admin_feedback);
+
+    // Map the API response into the editor's ModuleItem shape
+    const hydratedModules: ModuleItem[] = Array.isArray(data.modules) && data.modules.length > 0
+      ? data.modules.map((mod: {
+          id: string; title: string;
+          lessons?: {
             id: string; title: string;
-            lessons?: {
-              id: string; title: string;
-              lesson_type?: string; content?: string;
-              duration_minutes?: number;
-              video_path?: string; resource_path?: string;
-              assignment_title?: string; assignment_instructions?: string; assignment_points?: number;
-              quiz_questions?: { question: string; choices: string[]; correct_choice: number }[];
-            }[];
-          }) => ({
-            id: mod.id,
-            title: mod.title,
+            lesson_type?: string; content?: string;
+            duration_minutes?: number;
+            video_path?: string; resource_path?: string;
+            assignment_title?: string; assignment_instructions?: string; assignment_points?: number;
+            quiz_questions?: { question: string; choices: string[]; correct_choice: number }[];
+          }[];
+        }) => ({
+          id: mod.id,
+          title: mod.title,
+          isFreePreview: course.priceType === 'free',
+          lectures: Array.isArray(mod.lessons) ? mod.lessons.map((ls) => {
+            return {
+              id: ls.id,
+              title: ls.title,
+              videoFile: null,
+              pdfFile: null,
+              existingVideoUrl: ls.video_path || '',
+              existingResourceUrl: ls.resource_path || '',
+              assignmentTask: ls.lesson_type === 'assignment' ? (ls.content || '') : undefined,
+              timeLimitMinutes: ls.duration_minutes ?? 10,
+              assignmentTitle: ls.assignment_title || '',
+              assignmentInstructions: ls.assignment_instructions || '',
+              assignmentPoints: ls.assignment_points ?? 100,
+              quizQuestions: Array.isArray(ls.quiz_questions)
+                ? ls.quiz_questions.map((q) => ({
+                    question: q.question,
+                    choices: Array.isArray(q.choices) && q.choices.length >= 2
+                      ? q.choices
+                      : ['', '', '', ''],
+                    correctChoice: q.correct_choice ?? 0,
+                  }))
+                : [],
+            } satisfies Lecture;
+          }) : [],
+        }))
+      : [
+          {
+            id: 'm-1',
+            title: 'Module 1',
             isFreePreview: course.priceType === 'free',
-            lectures: Array.isArray(mod.lessons) ? mod.lessons.map((ls) => {
-              return {
-                id: ls.id,
-                title: ls.title,
-                videoFile: null,
-                pdfFile: null,
-                existingVideoUrl: ls.video_path || '',
-                existingResourceUrl: ls.resource_path || '',
-                assignmentTask: ls.lesson_type === 'assignment' ? (ls.content || '') : undefined,
-                timeLimitMinutes: ls.duration_minutes ?? 10,
-                assignmentTitle: ls.assignment_title || '',
-                assignmentInstructions: ls.assignment_instructions || '',
-                assignmentPoints: ls.assignment_points ?? 100,
-                quizQuestions: Array.isArray(ls.quiz_questions)
-                  ? ls.quiz_questions.map((q) => ({
-                      question: q.question,
-                      choices: Array.isArray(q.choices) && q.choices.length >= 2
-                        ? q.choices
-                        : ['', '', '', ''],
-                      correctChoice: q.correct_choice ?? 0,
-                    }))
-                  : [],
-              } satisfies Lecture;
-            }) : [],
-          }))
-        : [
-            {
-              id: 'm-1',
-              title: 'Module 1',
-              isFreePreview: course.priceType === 'free',
-              lectures: [{ id: 'l-1', title: 'Lecture 1', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
-            },
-          ];
+            lectures: [{ id: 'l-1', title: 'Lecture 1', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
+          },
+        ];
 
-      setModules(hydratedModules);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not load curriculum');
-      // Fall back to a blank module so the instructor can still edit
-      setModules([{
-        id: 'm-1',
-        title: 'Module 1',
-        isFreePreview: course.priceType === 'free',
-        lectures: [{ id: 'l-1', title: 'Lecture 1', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
-      }]);
-    } finally {
-      setEditCurriculumLoading(false);
-    }
-  };
+    setModules(hydratedModules);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Could not load curriculum');
+    // Fall back to a blank module so the instructor can still edit
+    setModules([{
+      id: 'm-1',
+      title: 'Module 1',
+      isFreePreview: course.priceType === 'free',
+      lectures: [{ id: 'l-1', title: 'Lecture 1', videoFile: null, pdfFile: null, existingVideoUrl: '', existingResourceUrl: '', quizQuestions: [] }],
+    }]);
+  } finally {
+    setEditCurriculumLoading(false);
+  }
+};
 
   useEffect(() => {
     const editId = searchParams.get('edit');
@@ -523,40 +525,157 @@ export function InstructorCoursesPage() {
     ]);
   };
 
-  const handleCreateCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
+ const API_BASE = import.meta.env.VITE_API_URL || '';
 
-    const totalLessonsCount = modules.reduce((acc, m) => acc + m.lectures.length, 0);
-    const imageUrl = coverImage
-      ? URL.createObjectURL(coverImage)
-      : 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80';
+const handleCreateCourse = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!newTitle.trim()) return;
 
-    const payload = {
+  const totalLessonsCount = modules.reduce((acc, m) => acc + m.lectures.length, 0);
+  const imageUrl = coverImage
+    ? URL.createObjectURL(coverImage)
+    : 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80';
+
+  const payload = {
+    title: newTitle.trim(),
+    slug: newTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `course-${Date.now()}`,
+    description: `Course created by instructor in ${newCategory}.`,
+    category: newCategory,
+    difficulty: 'Beginner',
+    thumbnail_url: '',
+    modules: modules.map((module, moduleIndex) => ({
+      title: module.title || `Module ${moduleIndex + 1}`,
+      position: moduleIndex,
+      lessons: module.lectures.map((lecture, lectureIndex) => ({
+        title: lecture.title || `Lecture ${lectureIndex + 1}`,
+        lesson_type: lecture.assignmentTitle?.trim() || lecture.assignmentInstructions?.trim()
+          ? 'assignment'
+          : lecture.quizQuestions.some((q) => q.question.trim())
+          ? 'quiz'
+          : lecture.videoFile
+          ? 'video'
+          : lecture.pdfFile
+          ? 'reading'
+          : 'video',
+        position: lectureIndex,
+        duration_minutes: Math.max(1, lecture.timeLimitMinutes ?? 10),
+        video_field: lecture.videoFile ? `lesson-video-${lecture.id}` : '',
+        resource_field: lecture.pdfFile ? `lesson-resource-${lecture.id}` : '',
+        content: lecture.assignmentInstructions?.trim() || '',
+        assignment_title: lecture.assignmentTitle?.trim() || '',
+        assignment_instructions: lecture.assignmentInstructions?.trim() || '',
+        assignment_points: lecture.assignmentPoints ?? 100,
+        quiz_questions: lecture.quizQuestions
+          .filter((q) => q.question.trim() && q.choices.some((c) => c.trim()))
+          .map((q, qIdx) => ({
+            question: q.question.trim(),
+            choices: q.choices.filter((c) => c.trim())),
+            correct_choice: q.correctChoice,
+            position: qIdx,
+          })),
+      })),
+    })),
+  };
+
+  try {
+    const token = localStorage.getItem('akademia-token');
+    const formData = new FormData();
+    formData.append('course', JSON.stringify(payload));
+    if (coverImage) {
+      formData.append('thumbnail', coverImage, coverImage.name);
+    }
+    modules.forEach((module) => {
+      module.lectures.forEach((lecture) => {
+        if (lecture.videoFile) {
+          formData.append(`lesson-video-${lecture.id}`, lecture.videoFile, lecture.videoFile.name);
+        }
+        if (lecture.pdfFile) {
+          formData.append(`lesson-resource-${lecture.id}`, lecture.pdfFile, lecture.pdfFile.name);
+        }
+      });
+    });
+
+    const response = await fetch(`${API_BASE}/api/courses/create`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || 'Course creation failed');
+    }
+
+    const createdCourse: CourseItem = {
+      id: data.id || `c-${Date.now()}`,
       title: newTitle.trim(),
-      slug: newTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || `course-${Date.now()}`,
-      description: `Course created by instructor in ${newCategory}.`,
       category: newCategory,
-      difficulty: 'Beginner',
-      thumbnail_url: '',
-      modules: modules.map((module, moduleIndex) => ({
-        title: module.title || `Module ${moduleIndex + 1}`,
-        position: moduleIndex,
-        lessons: module.lectures.map((lecture, lectureIndex) => ({
+      status: 'Pending',
+      students: 0,
+      rating: 0,
+      reviewsCount: 0,
+      priceType: newPriceType,
+      price: newPriceType === 'free' ? 'Free' : (newPrice.startsWith('৳') ? newPrice : `৳${newPrice}`),
+      lessons: totalLessonsCount || 1,
+      image: resolveBackendAssetUrl(data.thumbnail_url) || imageUrl,
+    };
+
+    setCourses((prev) => [createdCourse, ...prev]);
+    setNewTitle('');
+    setCoverImage(null);
+    setIsCreateModalOpen(false);
+    toast.success('Course saved to the database as a draft.');
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Could not save the course.');
+  }
+};
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+const handleUpdateCourse = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!editingCourse || !editTitle.trim()) return;
+
+  const totalLessonsCount = modules.reduce((acc, m) => acc + m.lectures.length, 0);
+  const imageUrl = editCoverImage ? URL.createObjectURL(editCoverImage) : editingCourse.image;
+
+  const coursePayload = {
+    title: editTitle.trim(),
+    category: editCategory,
+    difficulty: 'Beginner',
+    description: `Course updated by instructor in ${editCategory}.`,
+    modules: modules.map((module, moduleIndex) => ({
+      id: module.id,
+      title: module.title || `Module ${moduleIndex + 1}`,
+      position: moduleIndex,
+      lessons: module.lectures.map((lecture, lectureIndex) => {
+        const lessonType = lecture.assignmentTitle?.trim() || lecture.assignmentInstructions?.trim()
+          ? 'assignment'
+          : lecture.quizQuestions.some((q) => q.question.trim())
+          ? 'quiz'
+          : lecture.videoFile
+          ? 'video'
+          : lecture.pdfFile
+          ? 'reading'
+          : lecture.existingVideoUrl
+          ? 'video'
+          : lecture.existingResourceUrl
+          ? 'reading'
+          : 'video';
+        return {
+          id: lecture.id,
           title: lecture.title || `Lecture ${lectureIndex + 1}`,
-          lesson_type: lecture.assignmentTitle?.trim() || lecture.assignmentInstructions?.trim()
-            ? 'assignment'
-            : lecture.quizQuestions.some((q) => q.question.trim())
-            ? 'quiz'
-            : lecture.videoFile
-            ? 'video'
-            : lecture.pdfFile
-            ? 'reading'
-            : 'video',
+          lesson_type: lessonType,
           position: lectureIndex,
           duration_minutes: Math.max(1, lecture.timeLimitMinutes ?? 10),
-          video_field: lecture.videoFile ? `lesson-video-${lecture.id}` : '',
-          resource_field: lecture.pdfFile ? `lesson-resource-${lecture.id}` : '',
+          // New file upload field names (empty string = no new upload)
+          video_field: lecture.videoFile ? `edit-lesson-video-${lecture.id}` : '',
+          resource_field: lecture.pdfFile ? `edit-lesson-resource-${lecture.id}` : '',
+          // Tell the backend which existing paths to keep when no new file is provided
+          keep_video_path: lecture.existingVideoUrl,
+          keep_resource_path: lecture.existingResourceUrl,
           content: lecture.assignmentInstructions?.trim() || '',
           assignment_title: lecture.assignmentTitle?.trim() || '',
           assignment_instructions: lecture.assignmentInstructions?.trim() || '',
@@ -569,177 +688,64 @@ export function InstructorCoursesPage() {
               correct_choice: q.correctChoice,
               position: qIdx,
             })),
-        })),
-      })),
-    };
-
-    try {
-      const token = localStorage.getItem('akademia-token');
-      const formData = new FormData();
-      formData.append('course', JSON.stringify(payload));
-      if (coverImage) {
-        formData.append('thumbnail', coverImage, coverImage.name);
-      }
-      modules.forEach((module) => {
-        module.lectures.forEach((lecture) => {
-          if (lecture.videoFile) {
-            formData.append(`lesson-video-${lecture.id}`, lecture.videoFile, lecture.videoFile.name);
-          }
-          if (lecture.pdfFile) {
-            formData.append(`lesson-resource-${lecture.id}`, lecture.pdfFile, lecture.pdfFile.name);
-          }
-        });
-      });
-
-      const response = await fetch('http://localhost:8081/api/courses/create', {
-        method: 'POST',
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: formData,
-      });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.message || 'Course creation failed');
-      }
-
-      const createdCourse: CourseItem = {
-        id: data.id || `c-${Date.now()}`,
-        title: newTitle.trim(),
-        category: newCategory,
-        status: 'Pending',
-        students: 0,
-        rating: 0,
-        reviewsCount: 0,
-        priceType: newPriceType,
-        price: newPriceType === 'free' ? 'Free' : (newPrice.startsWith('৳') ? newPrice : `৳${newPrice}`),
-        lessons: totalLessonsCount || 1,
-        image: resolveBackendAssetUrl(data.thumbnail_url) || imageUrl,
-      };
-
-      setCourses((prev) => [createdCourse, ...prev]);
-      setNewTitle('');
-      setCoverImage(null);
-      setIsCreateModalOpen(false);
-      toast.success('Course saved to the database as a draft.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not save the course.');
-    }
+        };
+      }),
+    })),
   };
 
-  const handleUpdateCourse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingCourse || !editTitle.trim()) return;
-
-    const totalLessonsCount = modules.reduce((acc, m) => acc + m.lectures.length, 0);
-    const imageUrl = editCoverImage ? URL.createObjectURL(editCoverImage) : editingCourse.image;
-
-    const coursePayload = {
-      title: editTitle.trim(),
-      category: editCategory,
-      difficulty: 'Beginner',
-      description: `Course updated by instructor in ${editCategory}.`,
-      modules: modules.map((module, moduleIndex) => ({
-        id: module.id,
-        title: module.title || `Module ${moduleIndex + 1}`,
-        position: moduleIndex,
-        lessons: module.lectures.map((lecture, lectureIndex) => {
-          const lessonType = lecture.assignmentTitle?.trim() || lecture.assignmentInstructions?.trim()
-            ? 'assignment'
-            : lecture.quizQuestions.some((q) => q.question.trim())
-            ? 'quiz'
-            : lecture.videoFile
-            ? 'video'
-            : lecture.pdfFile
-            ? 'reading'
-            : lecture.existingVideoUrl
-            ? 'video'
-            : lecture.existingResourceUrl
-            ? 'reading'
-            : 'video';
-          return {
-            id: lecture.id,
-            title: lecture.title || `Lecture ${lectureIndex + 1}`,
-            lesson_type: lessonType,
-            position: lectureIndex,
-            duration_minutes: Math.max(1, lecture.timeLimitMinutes ?? 10),
-            // New file upload field names (empty string = no new upload)
-            video_field: lecture.videoFile ? `edit-lesson-video-${lecture.id}` : '',
-            resource_field: lecture.pdfFile ? `edit-lesson-resource-${lecture.id}` : '',
-            // Tell the backend which existing paths to keep when no new file is provided
-            keep_video_path: lecture.existingVideoUrl,
-            keep_resource_path: lecture.existingResourceUrl,
-            content: lecture.assignmentInstructions?.trim() || '',
-            assignment_title: lecture.assignmentTitle?.trim() || '',
-            assignment_instructions: lecture.assignmentInstructions?.trim() || '',
-            assignment_points: lecture.assignmentPoints ?? 100,
-            quiz_questions: lecture.quizQuestions
-              .filter((q) => q.question.trim() && q.choices.some((c) => c.trim()))
-              .map((q, qIdx) => ({
-                question: q.question.trim(),
-                choices: q.choices.filter((c) => c.trim()),
-                correct_choice: q.correctChoice,
-                position: qIdx,
-              })),
-          };
-        }),
-      })),
-    };
-
-    try {
-      const token = localStorage.getItem('akademia-token');
-      const formData = new FormData();
-      formData.append('course', JSON.stringify(coursePayload));
-      if (editCoverImage) {
-        formData.append('thumbnail', editCoverImage, editCoverImage.name);
-      }
-      // Append new lesson file uploads
-      modules.forEach((module) => {
-        module.lectures.forEach((lecture) => {
-          if (lecture.videoFile) {
-            formData.append(`edit-lesson-video-${lecture.id}`, lecture.videoFile, lecture.videoFile.name);
-          }
-          if (lecture.pdfFile) {
-            formData.append(`edit-lesson-resource-${lecture.id}`, lecture.pdfFile, lecture.pdfFile.name);
-          }
-        });
-      });
-
-      const response = await fetch(
-        `http://localhost:8081/api/instructor/courses/${encodeURIComponent(editingCourse.id)}/curriculum`,
-        {
-          method: 'PUT',
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: formData,
+  try {
+    const token = localStorage.getItem('akademia-token');
+    const formData = new FormData();
+    formData.append('course', JSON.stringify(coursePayload));
+    if (editCoverImage) {
+      formData.append('thumbnail', editCoverImage, editCoverImage.name);
+    }
+    // Append new lesson file uploads
+    modules.forEach((module) => {
+      module.lectures.forEach((lecture) => {
+        if (lecture.videoFile) {
+          formData.append(`edit-lesson-video-${lecture.id}`, lecture.videoFile, lecture.videoFile.name);
         }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || 'Course update failed');
+        if (lecture.pdfFile) {
+          formData.append(`edit-lesson-resource-${lecture.id}`, lecture.pdfFile, lecture.pdfFile.name);
+        }
+      });
+    });
 
-      setCourses(
-        courses.map((c) => {
-          if (c.id === editingCourse.id) {
-            return {
-              ...c,
-              title: editTitle.trim(),
-              category: editCategory,
-              priceType: editPriceType,
-              price: editPriceType === 'free' ? 'Free' : (editPrice.startsWith('৳') ? editPrice : `৳${editPrice}`),
-              lessons: totalLessonsCount || c.lessons,
-              image: imageUrl,
-              status: 'Pending',
-            };
-          }
-          return c;
-        })
-      );
-      setEditingCourse(null);
-      toast.success('Course curriculum updated — awaiting admin re-approval before going live.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not update course.');
-    }
-  };
+    const response = await fetch(
+      `${API_BASE}/api/instructor/courses/${encodeURIComponent(editingCourse.id)}/curriculum`,
+      {
+        method: 'PUT',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: formData,
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || 'Course update failed');
+
+    setCourses(
+      courses.map((c) => {
+        if (c.id === editingCourse.id) {
+          return {
+            ...c,
+            title: editTitle.trim(),
+            category: editCategory,
+            priceType: editPriceType,
+            price: editPriceType === 'free' ? 'Free' : (editPrice.startsWith('৳') ? editPrice : `৳${editPrice}`),
+            lessons: totalLessonsCount || c.lessons,
+            image: imageUrl,
+            status: 'Pending',
+          };
+        }
+        return c;
+      })
+    );
+    setEditingCourse(null);
+    toast.success('Course curriculum updated — awaiting admin re-approval before going live.');
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Could not update course.');
+  }
+};
 
   return (
     <div className="space-y-8 p-6 lg:p-8 relative">

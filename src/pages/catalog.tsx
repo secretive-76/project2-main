@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/lib/api';
 
-const API_BASE = 'http://localhost:8081';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 interface ActiveCourseApiItem {
   id: string;

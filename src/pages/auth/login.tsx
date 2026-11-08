@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import type { UserRole } from '@/types';
 
-const API_BASE = 'http://localhost:8081';
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 interface LoginPageProps {
   portalRole?: UserRole;

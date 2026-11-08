@@ -28,54 +28,56 @@ export function SecurityTab() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handlePasswordUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
-    if (formData.newPassword !== formData.confirmPassword) {
-      toast.error("Passwords don't match", {
-        description: "Your new password and confirmation must match.",
-      });
-      return;
+const handlePasswordUpdate = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (formData.newPassword !== formData.confirmPassword) {
+    toast.error("Passwords don't match", {
+      description: "Your new password and confirmation must match.",
+    });
+    return;
+  }
+
+  if (formData.newPassword.length < 6) {
+    toast.error("Password too short", {
+      description: "New password must be at least 6 characters long.",
+    });
+    return;
+  }
+
+  setIsLoading(true);
+
+  try {
+    const response = await fetch(`${API_BASE}/api/change-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: user?.email,
+        old_password: formData.currentPassword,
+        new_password: formData.newPassword,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Failed to update password");
     }
 
-    if (formData.newPassword.length < 6) {
-      toast.error("Password too short", {
-        description: "New password must be at least 6 characters long.",
-      });
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("http://localhost:8081/api/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: user?.email,
-          old_password: formData.currentPassword,
-          new_password: formData.newPassword,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to update password");
-      }
-
-      toast.success("Password updated successfully");
-      setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    } catch (error: any) {
-      toast.error("Error updating password", {
-        description: error.message || "Please check your current password and try again.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    toast.success("Password updated successfully");
+    setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  } catch (error: any) {
+    toast.error("Error updating password", {
+      description: error.message || "Please check your current password and try again.",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="space-y-4">

@@ -235,22 +235,23 @@ export function CourseDetailPage() {
   const isInstructorOwner = isInstructorPreview && String(user?.id) === String(course.instructor.id);
   const canAccessMaterials = isInstructorPreview || isEnrolled || user?.role === 'admin';
 
-  const deleteCourse = async () => {
-    if (!isInstructorOwner || !window.confirm('Delete this course permanently?')) return;
-    const token = localStorage.getItem('akademia-token');
-    const response = await fetch(`http://localhost:8081/api/courses/delete?course_id=${encodeURIComponent(course.id)}`, {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      toast.error(data.message || 'Could not delete course.');
-      return;
-    }
-    toast.success('Course deleted.');
-    navigate('/instructor/courses');
-  };
+  const API_BASE = import.meta.env.VITE_API_URL || '';
 
+const deleteCourse = async () => {
+  if (!isInstructorOwner || !window.confirm('Delete this course permanently?')) return;
+  const token = localStorage.getItem('akademia-token');
+  const response = await fetch(`${API_BASE}/api/courses/delete?course_id=${encodeURIComponent(course.id)}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    toast.error(data.message || 'Could not delete course.');
+    return;
+  }
+  toast.success('Course deleted.');
+  navigate('/instructor/courses');
+};
   const startOrEnroll = async () => {
     if (!isEnrolled) {
       setEnrolling(true);
