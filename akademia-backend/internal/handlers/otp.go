@@ -29,112 +29,70 @@ func generate6DigitOTP() (string, error) {
 	return fmt.Sprintf("%06d", n), nil
 }
 
-// sendEmail uses Resend's HTTPS API so email delivery works on hosts that
-// restrict outbound SMTP connections.
-func sendEmail(toEmail, subject, htmlBody string) error {
-	apiKey := os.Getenv("RESEND_API_KEY")
+type BrevoSender struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type BrevoRecipient struct {
+	Email string `json:"email"`
+}
+
+type BrevoPayload struct {
+	Sender      BrevoSender      `json:"sender"`
+	To          []BrevoRecipient `json:"to"`
+	Subject     string           `json:"subject"`
+	HTMLContent string           `json:"htmlContent"`
+}
+
+func SendOTPEmail(toEmail, otp string) error {
+	apiKey := os.Getenv("BREVO_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("RESEND_API_KEY is not configured")
+		return fmt.Errorf("BREVO_API_KEY environment variable is not set")
 	}
 
-	from := os.Getenv("RESEND_FROM")
-	if from == "" {
-		from = "onboarding@resend.dev"
+	senderEmail := os.Getenv("BREVO_SENDER_EMAIL")
+	if senderEmail == "" {
+		senderEmail = "nujhatrity34@gmail.com"
 	}
 
-	payload, err := json.Marshal(map[string]interface{}{
-		"from":    from,
-		"to":      []string{toEmail},
-		"subject": subject,
-		"html":    htmlBody,
-	})
+	payload := BrevoPayload{
+		Sender: BrevoSender{
+			Name:  "Akademia",
+			Email: senderEmail,
+		},
+		To: []BrevoRecipient{
+			{Email: toEmail},
+		},
+		Subject:     "Your Akademia Verification Code",
+		HTMLContent: fmt.Sprintf("<div style='font-family:sans-serif;padding:16px;'><h2>Welcome to Akademia</h2><p>Your OTP code is: <strong style='font-size:20px;letter-spacing:2px;'>%s</strong></p></div>", otp),
+	}
+
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("encode email request: %w", err)
+		return fmt.Errorf("failed to marshal brevo payload: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(payload))
+	req, err := http.NewRequest("POST", "https://api.brevo.com/v3/smtp/email", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("create email request: %w", err)
+		return fmt.Errorf("failed to create http request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	req.Header.Set("api-key", apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	response, err := client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("send email request: %w", err)
+		return fmt.Errorf("brevo request failed: %w", err)
 	}
-	defer response.Body.Close()
+	defer resp.Body.Close()
 
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		var errorResponse struct {
-			Message string `json:"message"`
-		}
-		if decodeErr := json.NewDecoder(response.Body).Decode(&errorResponse); decodeErr == nil && errorResponse.Message != "" {
-			return fmt.Errorf("Resend rejected email: %s", errorResponse.Message)
-		}
-		return fmt.Errorf("Resend rejected email with status %s", response.Status)
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("brevo api responded with status code %d", resp.StatusCode)
 	}
 
 	return nil
-}
-
-// sendOTPEmail dispatches the OTP through Resend's HTTPS API.
-func sendOTPEmail(toEmail, toName, otp, role string) error {
-	roleLabel := strings.Title(role)
-
-	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f6fb;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:40px 0;">
-    <tr><td align="center">
-      <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-        <!-- Header -->
-        <tr>
-          <td style="background:linear-gradient(135deg,#6c63ff 0%%,#4f46e5 100%%);padding:32px 40px;text-align:center;">
-            <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;letter-spacing:-0.5px;">Akademia</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">AI-Powered Learning Platform</p>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="padding:40px 40px 32px;">
-            <p style="margin:0 0 8px;font-size:16px;color:#1a1a2e;font-weight:600;">Hi %s 👋</p>
-            <p style="margin:0 0 24px;font-size:14px;color:#555;line-height:1.6;">
-              You requested to create a <strong>%s</strong> account on Akademia.<br>
-              Use the verification code below to confirm your email address.
-            </p>
-            <!-- OTP box -->
-            <div style="background:#f0eeff;border:2px dashed #6c63ff;border-radius:10px;padding:24px;text-align:center;margin-bottom:24px;">
-              <p style="margin:0 0 6px;font-size:12px;color:#6c63ff;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Your verification code</p>
-              <p style="margin:0;font-size:42px;font-weight:800;letter-spacing:12px;color:#4f46e5;font-family:'Courier New',monospace;">%s</p>
-            </div>
-            <p style="margin:0 0 8px;font-size:13px;color:#888;text-align:center;">
-              ⏱ This code expires in <strong>10 minutes</strong>.
-            </p>
-            <p style="margin:0;font-size:13px;color:#aaa;text-align:center;">
-              If you didn't request this, you can safely ignore this email.
-            </p>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td style="background:#fafafa;border-top:1px solid #eee;padding:20px 40px;text-align:center;">
-            <p style="margin:0;font-size:12px;color:#bbb;">© %d Akademia · All rights reserved</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`, toName, roleLabel, otp, time.Now().Year())
-
-	return sendEmail(
-		toEmail,
-		fmt.Sprintf("[Akademia] Your %s verification code: %s", roleLabel, otp),
-		htmlBody,
-	)
 }
 
 // ── SendOTP ───────────────────────────────────────────────────────────────────
@@ -233,7 +191,7 @@ func SendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send the email (non-blocking log on failure so we can surface the error)
-	if err := sendOTPEmail(input.Email, input.Name, otp, input.Role); err != nil {
+	if err := SendOTPEmail(input.Email, otp); err != nil {
 		log.Printf("[SendOTP] Email delivery failed for %s: %v", input.Email, err)
 		// Clean up the stored OTP so the user can retry
 		_, _ = config.DB.Exec("DELETE FROM email_otps WHERE LOWER(email) = $1", input.Email)
@@ -467,7 +425,7 @@ func ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send reset email
-	if err := sendPasswordResetEmail(input.Email, name, otp); err != nil {
+	if err := SendOTPEmail(input.Email, otp); err != nil {
 		log.Printf("[ForgotPassword] Email send failed for %s: %v", input.Email, err)
 		_, _ = config.DB.Exec("DELETE FROM email_otps WHERE LOWER(email) = $1", input.Email)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -635,9 +593,6 @@ func sendPasswordResetEmail(toEmail, toName, otp string) error {
 </body>
 </html>`, displayName, otp, time.Now().Year())
 
-	return sendEmail(
-		toEmail,
-		fmt.Sprintf("[Akademia] Password reset code: %s", otp),
-		htmlBody,
-	)
+	_ = htmlBody
+	return SendOTPEmail(toEmail, otp)
 }
