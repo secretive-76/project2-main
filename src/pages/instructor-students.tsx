@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Mail, BookOpen, CheckCircle2, User, Clock, Award, FileText, ChevronRight, Send, MessageSquare } from 'lucide-react';
+import { Search, BookOpen, CheckCircle2, User, Clock, ChevronRight, Send, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -322,9 +322,10 @@ export function InstructorStudentsPage() {
                     </Button>
                   ))}
                 </div>
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="modules">Module & Lecture Hours</TabsTrigger>
                   <TabsTrigger value="submissions">Submissions & Grades</TabsTrigger>
+                  <TabsTrigger value="quiz-results">Quiz Results</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="modules" className="space-y-4 pt-4">
@@ -351,7 +352,7 @@ export function InstructorStudentsPage() {
                 <TabsContent value="submissions" className="space-y-4 pt-4">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Assignments & Quiz Grades</h4>
                   <div className="space-y-3">
-                    {(activeCourse?.submissions ?? []).map((sub) => (
+                    {(activeCourse?.submissions ?? []).filter((sub) => sub.type !== 'Quiz').map((sub) => (
                       <div key={sub.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
@@ -370,6 +371,32 @@ export function InstructorStudentsPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="quiz-results" className="space-y-4 pt-4">
+                  <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Student Quiz Results</h4>
+                  <div className="space-y-3">
+                    {(activeCourse?.submissions ?? []).filter((sub) => sub.type === 'Quiz').length === 0 ? (
+                      <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        This student has not completed any quizzes in this course.
+                      </p>
+                    ) : (
+                      (activeCourse?.submissions ?? []).filter((sub) => sub.type === 'Quiz').map((sub) => (
+                        <div key={sub.id} className="flex items-center justify-between rounded-lg border bg-card p-3">
+                          <div className="space-y-1">
+                            <span className="font-medium text-sm">{sub.title}</span>
+                            <p className="text-xs text-muted-foreground">Attempted on {sub.submittedDate}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-bold text-base">{sub.score}</span>
+                            <div>
+                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">Completed</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>

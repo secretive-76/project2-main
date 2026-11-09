@@ -965,10 +965,17 @@ func instructorStudentModules(studentID int, courseID string) ([]map[string]any,
 
 func instructorStudentSubmissions(studentID int, courseID string) ([]map[string]any, error) {
 	rows, err := config.DB.Query(`
-		SELECT s.id, l.title, s.submitted_at, COALESCE(s.graded_status, 'pending'), s.score
+		SELECT s.id, l.title, s.submitted_at, COALESCE(s.graded_status, 'pending'), s.score, 'Assignment'
 		FROM student_assignment_submissions s
 		JOIN platform_lessons l ON l.id = s.lesson_id
-		WHERE s.student_id = $1 AND s.course_id = $2 ORDER BY s.submitted_at DESC`, studentID, courseID)
+		WHERE s.student_id = $1 AND s.course_id = $2
+		UNION ALL
+		SELECT q.id, l.title, q.attempted_at, 'graded', q.score, 'Quiz'
+		FROM student_quiz_attempts q
+		JOIN platform_lessons l ON l.id = q.quiz_id
+		JOIN platform_modules m ON m.id = l.module_id
+		WHERE q.student_id = $1 AND m.course_id = $2
+		ORDER BY submitted_at DESC`, studentID, courseID)
 	if err != nil {
 		return nil, err
 	}
@@ -976,13 +983,13 @@ func instructorStudentSubmissions(studentID int, courseID string) ([]map[string]
 	submissions := make([]map[string]any, 0)
 	for rows.Next() {
 		var id int64
-		var title, status string
+		var title, status, submissionType string
 		var submittedAt time.Time
 		var score sql.NullInt64
-		if err := rows.Scan(&id, &title, &submittedAt, &status, &score); err != nil {
+		if err := rows.Scan(&id, &title, &submittedAt, &status, &score, &submissionType); err != nil {
 			return nil, err
 		}
-		item := map[string]any{"id": id, "title": title, "type": "Assignment", "submitted_date": submittedAt.Format("Jan 02, 2006"), "status": "Pending", "score": "-"}
+		item := map[string]any{"id": id, "title": title, "type": submissionType, "submitted_date": submittedAt.Format("Jan 02, 2006"), "status": "Pending", "score": "-"}
 		if status == "graded" && score.Valid {
 			item["status"] = "Graded"
 			item["score"] = fmt.Sprintf("%d/100", score.Int64)
