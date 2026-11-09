@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -260,7 +261,13 @@ func CreateStudentCourseMessage(w http.ResponseWriter, r *http.Request) {
 	var instructorID int
 	var courseTitle string
 	if lookupErr := config.DB.QueryRow(`SELECT instructor_id, title FROM platform_courses WHERE id=$1`, strings.TrimSpace(input.CourseID)).Scan(&instructorID, &courseTitle); lookupErr == nil {
-		createNotification(instructorID, "student_message", "New student message", fmt.Sprintf("A student sent a message about %q.", courseTitle), "/instructor/messages")
+		createNotification(
+			instructorID,
+			"student_message",
+			"New student message",
+			fmt.Sprintf("A student sent a message about %q.", courseTitle),
+			"/instructor/students?student_id="+url.QueryEscape(strconv.Itoa(student.UserID))+"&course_id="+url.QueryEscape(strings.TrimSpace(input.CourseID)),
+		)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

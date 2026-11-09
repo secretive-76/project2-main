@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, BookOpen, CheckCircle2, User, Clock, ChevronRight, Send, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +54,7 @@ interface Student {
 }
 
 export function InstructorStudentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -119,6 +121,31 @@ export function InstructorStudentsPage() {
 
     void loadStudents();
   }, []);
+
+  useEffect(() => {
+    const studentId = searchParams.get('student_id');
+    const courseId = searchParams.get('course_id');
+    if (!studentId || !courseId || students.length === 0) return;
+
+    const student = students.find((item) => item.id === studentId);
+    if (!student) {
+      toast.error('The student conversation could not be found.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    const course = student.courses.find((item) => item.courseId === courseId);
+    if (!course) {
+      toast.error('The course conversation could not be found.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    setActiveStudent(student);
+    setActiveCourseId(course.courseId);
+    setIsChatOpen(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, students]);
 
   const filteredStudents = students.filter((stud) =>
     stud.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
