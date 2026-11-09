@@ -111,6 +111,7 @@ func main() {
 	http.HandleFunc("/api/student/assignments/submit", enableCORS(handlers.SubmitAssignment))
 	http.HandleFunc("/api/student/my-submissions", enableCORS(handlers.GetMyAssignmentSubmissions))
 	http.HandleFunc("/api/assignment-submissions", enableCORS(handlers.ListInstructorSubmissions))
+	http.HandleFunc("/api/assignment-submissions/file", enableCORS(handlers.ServeAssignmentSubmission))
 	http.HandleFunc("/api/instructor/grading/courses", enableCORS(handlers.ListInstructorGradingCourses))
 	http.HandleFunc("/api/instructor/grading/roster", enableCORS(handlers.ListInstructorAssignmentRoster))
 	http.HandleFunc("/api/instructor/students", enableCORS(handlers.ListInstructorStudents))

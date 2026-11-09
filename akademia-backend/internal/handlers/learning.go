@@ -586,6 +586,80 @@ func ListInstructorSubmissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"submissions": submissions})
 }
 
+func ServeAssignmentSubmission(w http.ResponseWriter, r *http.Request) {
+	viewer, err := currentUser(r)
+	if err != nil {
+		writeStudentError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if viewer.Role != "instructor" && viewer.Role != "admin" {
+		writeStudentError(w, http.StatusForbidden, "only instructors and admins can access submissions")
+		return
+	}
+
+	submissionID, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get("submission_id")), 10, 64)
+	if err != nil || submissionID <= 0 {
+		writeStudentError(w, http.StatusBadRequest, "submission_id is required")
+		return
+	}
+
+	var storagePath, fileName, courseID string
+	query := `
+		SELECT s.storage_path, s.file_name, s.course_id
+		FROM student_assignment_submissions s
+		JOIN platform_courses c ON c.id = s.course_id
+		WHERE s.id = $1`
+	args := []interface{}{submissionID}
+	if viewer.Role == "instructor" {
+		query += ` AND c.instructor_id = $2`
+		args = append(args, viewer.UserID)
+	}
+	if err := config.DB.QueryRow(query, args...).Scan(&storagePath, &fileName, &courseID); err != nil {
+		writeStudentError(w, http.StatusNotFound, "Assignment submission not found")
+		return
+	}
+	_ = courseID
+
+	assetURL := config.SupabaseStoragePublicURL(storagePath)
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, assetURL, nil)
+	if err != nil {
+		writeStudentError(w, http.StatusInternalServerError, "Could not prepare assignment file")
+		return
+	}
+	if serviceKey := strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY")); serviceKey != "" {
+		request.Header.Set("Authorization", "Bearer "+serviceKey)
+		request.Header.Set("apikey", serviceKey)
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		log.Printf("[Grading] assignment file request failed: %v", err)
+		writeStudentError(w, http.StatusBadGateway, "Could not retrieve assignment file")
+		return
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		log.Printf("[Grading] assignment file request returned %s", response.Status)
+		writeStudentError(w, http.StatusBadGateway, "Could not retrieve assignment file")
+		return
+	}
+
+	contentType := response.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/pdf"
+	}
+	w.Header().Set("Content-Type", contentType)
+	disposition := "inline"
+	if r.URL.Query().Get("download") == "1" {
+		disposition = "attachment"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, strings.ReplaceAll(filepath.Base(fileName), `"`, "")))
+	w.WriteHeader(http.StatusOK)
+	if _, err := io.Copy(w, response.Body); err != nil {
+		log.Printf("[Grading] assignment file response failed: %v", err)
+	}
+}
+
 func ListInstructorStudents(w http.ResponseWriter, r *http.Request) {
 	viewer, err := currentUser(r)
 	if err != nil {

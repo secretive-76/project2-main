@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, Search, Filter, Award, MessageSquare, BookOpen, User, RefreshCcw, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Clock, Search, Award, BookOpen, RefreshCcw, ExternalLink, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { apiRequest, resolveBackendAssetUrl } from '@/lib/api';
+import { apiRequest, BACKEND_BASE_URL } from '@/lib/api';
 import { ChevronRight, /* other icons you are using */ } from 'lucide-react';
 
 interface Submission {
@@ -89,7 +89,7 @@ export function InstructorGradingPage() {
         score: s.score ?? undefined,
         feedback: s.feedback || undefined,
         maxScore: 100,
-        fileUrl: s.storage_path ? resolveBackendAssetUrl(s.storage_path) : undefined,
+        fileUrl: s.storage_path ? `${BACKEND_BASE_URL}/api/assignment-submissions/file?submission_id=${s.submission_id}` : undefined,
       })));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not load assignment roster.');
@@ -155,6 +155,32 @@ export function InstructorGradingPage() {
       setIsDialogOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save grade.');
+    }
+  };
+
+  const openSubmissionFile = async (submission: Submission, download: boolean) => {
+    if (!submission.fileUrl) return;
+    try {
+      const token = localStorage.getItem('akademia-token');
+      const response = await fetch(
+        `${submission.fileUrl}${download ? '&download=1' : ''}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      if (!response.ok) {
+        throw new Error('Could not retrieve the assignment file.');
+      }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      if (download) {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `${submission.studentName}-${submission.assignmentTitle}.pdf`;
+        link.click();
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not retrieve the assignment file.');
     }
   };
 
@@ -236,7 +262,15 @@ export function InstructorGradingPage() {
             className="pl-9"
           />
         </div>
-        <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)} className="w-auto">
+        <Tabs
+          value={statusFilter}
+          onValueChange={(value) => {
+            if (value === 'all' || value === 'pending' || value === 'graded') {
+              setStatusFilter(value);
+            }
+          }}
+          className="w-auto"
+        >
           <TabsList>
             <TabsTrigger value="all">All Submissions</TabsTrigger>
             <TabsTrigger value="pending">
@@ -305,15 +339,16 @@ export function InstructorGradingPage() {
 
                 <div className="flex items-center gap-3">
                   {sub.fileUrl && (
-                    <a
-                      href={sub.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                    >
+                    <div className="flex items-center gap-2">
+                    <Button variant="link" className="h-auto p-0 text-sm" onClick={() => void openSubmissionFile(sub, false)}>
                       <ExternalLink className="h-4 w-4" />
                       View PDF
-                    </a>
+                    </Button>
+                    <Button variant="link" className="h-auto p-0 text-sm" onClick={() => void openSubmissionFile(sub, true)}>
+                      <Download className="h-4 w-4" />
+                      Download
+                    </Button>
+                    </div>
                   )}
                   <Button variant={sub.status === 'pending' ? 'default' : 'outline'} onClick={() => handleOpenGradeDialog(sub)}>
                     {sub.status === 'pending' ? 'Grade Assignment' : 'Edit Grade'}
